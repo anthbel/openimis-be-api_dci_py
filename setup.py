@@ -22,6 +22,7 @@ setup(
     install_requires=[
         "django",
         "djangorestframework",
+        "aiohttp",
         "drf-spectacular",
         "openimis-be-core",
         "openimis-be-individual",

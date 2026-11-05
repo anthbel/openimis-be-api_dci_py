@@ -30,7 +30,7 @@ jobs:
     env:
       ASSEMBLY_REF: release/26.10
       MODULE_NAME: api_dci
-      BASE_MODULES: core individual workflow tasks_management location medical medical_pricelist calculation
+      BASE_MODULES: core individual workflow tasks_management location medical medical_pricelist calculation contribution_plan
       EXTRA_MODULES: ""
     steps:
       - uses: actions/checkout@v7
