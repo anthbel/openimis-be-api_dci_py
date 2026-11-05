@@ -1,0 +1,94 @@
+name: Module CI
+
+on:
+  pull_request:
+  push:
+    branches: [rsu/26.10]
+  workflow_dispatch:
+
+# Runs the module's tests on the openIMIS release/26.10 assembly, restricted to the modules it
+# needs, on the openIMIS database image.
+
+jobs:
+  test:
+    name: Module tests (PostgreSQL)
+    runs-on: ubuntu-24.04
+    services:
+      pgsql:
+        image: ghcr.io/openimis/openimis-pgsql:ci-18
+        env:
+          POSTGRES_DB: test_imis
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: YourStrong!Passw0rd
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ASSEMBLY_REF: release/26.10
+      MODULE_NAME: api_dci
+      BASE_MODULES: core individual workflow tasks_management location
+      EXTRA_MODULES: ""
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: current-module
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: current-module/setup.py
+
+      - name: Clone the assembly
+        run: git clone --depth=1 --branch="$ASSEMBLY_REF" https://github.com/openimis/openimis-be_py.git openimis
+
+      - name: Write the module manifest
+        working-directory: openimis
+        run: |
+          jq --arg keep "$BASE_MODULES" --arg extra "$EXTRA_MODULES" --arg name "$MODULE_NAME" '
+            ($keep | split(" ")) as $kept
+            | .modules |= (
+                map(select(.name as $n | $kept | index($n)))
+                + ($extra | split(" ") | map(select(length > 0) | {name: ., pip: ("-e ../../dep-" + .)}))
+                + [{name: $name, pip: "-e ../../current-module"}]
+              )
+          ' openimis.json > openimis.tmp
+          mv openimis.tmp openimis.json
+          cat openimis.json
+
+      - name: Install dependencies
+        working-directory: openimis/script
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ../requirements.txt
+          python modules-requirements.py ../openimis.json > modules-requirements.txt
+          cat modules-requirements.txt
+          pip install --no-cache-dir -r modules-requirements.txt
+
+      - name: Prepare the database
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          git clone --depth=1 --branch=develop https://github.com/openimis/database_postgresql.git sql_psql
+          sudo bash sql_psql/install_postgres_json_schema_extension.sh
+          PGPASSWORD='YourStrong!Passw0rd' psql -U postgres -h localhost -d test_imis -f "sql_psql/database scripts/json_schema_extension.sql"
+
+      - name: Run the tests
+        working-directory: openimis/openIMIS
+        run: python manage.py test --keepdb "$MODULE_NAME"
+        env:
+          SECRET_KEY: secret
+          MODE: DEV
+          DB_DEFAULT: postgresql
+          CELERY_BROKER_URL: memory://openIMIS-test//
+          CELERY_RESULT_BACKEND: cache+memory://openIMIS-test//
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: test_imis
+          DB_TEST_NAME: test_imis
+          DB_USER: postgres
+          DB_PASSWORD: YourStrong!Passw0rd
+          SITE_ROOT: api
