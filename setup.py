@@ -23,6 +23,7 @@ setup(
         "django",
         "djangorestframework",
         "aiohttp",
+        "orjson",
         "drf-spectacular",
         "openimis-be-core",
         "openimis-be-individual",
