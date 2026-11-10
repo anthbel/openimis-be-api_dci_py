@@ -29,3 +29,13 @@ class ProviderWithoutSearch:
 
 
 NOT_A_PROVIDER = object()
+
+
+class ProviderRaisingValueError:
+    """A provider whose search fails with an internal ValueError."""
+
+    def required_right(self):
+        return PROVIDER_RIGHT
+
+    def search(self, user, query, cursor, limit):
+        raise ValueError("internal detail: column hh_secret does not exist")

@@ -118,5 +118,6 @@ class BackgroundSearchTask(threading.Thread):
             sender_uri,
             json=response_data,
             headers={"Content-Type": "application/json"},
-            timeout=10
+            timeout=10,
+            allow_redirects=False,
         )

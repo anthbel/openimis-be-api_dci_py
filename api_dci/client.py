@@ -63,7 +63,11 @@ class DCISearchClient:
         self.sender_id = sender_id or DCIConfig.get_registry_id()
         self.receiver_id = receiver_id
         self.timeout = timeout
-        self.session = session or requests.Session()
+        if session is None:
+            session = requests.Session()
+            # ~/.netrc or proxy variables must not replace the Bearer credential.
+            session.trust_env = False
+        self.session = session
 
     def sync_search(self, reg_record_type, query, cursor=None, limit=MAX_PAGE_SIZE):
         """

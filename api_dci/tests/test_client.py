@@ -242,3 +242,11 @@ class DCISearchClientRoundTripTestCase(ClientTestBase):
         with self.assertRaises(DCIHTTPError) as raised:
             self.client_for().sync_search("Unknown", {}, None, 2)
         self.assertEqual(raised.exception.status_code, 403)
+
+
+class DCISearchClientEnvironmentTestCase(SimpleTestCase):
+    """The client's own session ignores ~/.netrc and proxy settings from the environment."""
+
+    def test_default_session_does_not_trust_the_environment(self):
+        client = DCISearchClient(BASE_URL, CREDENTIAL_ENV)
+        self.assertIs(client.session.trust_env, False)

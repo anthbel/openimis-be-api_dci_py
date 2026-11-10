@@ -31,6 +31,10 @@ MAX_PAGE_SIZE = 100
 _providers = {}
 
 
+class InvalidSearchRequest(ValueError):
+    """The search request itself is malformed: its message is safe to return to the caller."""
+
+
 class MixedRecordTypes(Exception):
     """A search message mixes a provider record type with another target."""
 
@@ -132,18 +136,18 @@ def provider_search_args(request_data, search_request):
     """
     The (query, cursor, limit) a provider search takes from this request.
 
-    Raises ValueError when the cursor is not a string or the page size is not an
+    Raises InvalidSearchRequest when the cursor is not a string or the page size is not an
     integer between 1 and MAX_PAGE_SIZE.
     """
     criteria = search_request.get("search_criteria") or {}
     meta = (request_data.get("header") or {}).get("meta") or {}
     cursor = meta.get("cursor") if isinstance(meta, dict) else None
     if cursor is not None and not isinstance(cursor, str):
-        raise ValueError("header.meta.cursor must be a string")
+        raise InvalidSearchRequest("header.meta.cursor must be a string")
     pagination = criteria.get("pagination") or {}
     limit = pagination.get("page_size", MAX_PAGE_SIZE)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_PAGE_SIZE:
-        raise ValueError(f"pagination.page_size must be an integer from 1 to {MAX_PAGE_SIZE}")
+        raise InvalidSearchRequest(f"pagination.page_size must be an integer from 1 to {MAX_PAGE_SIZE}")
     return criteria.get("query"), cursor, limit
 
 

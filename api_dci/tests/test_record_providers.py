@@ -468,3 +468,36 @@ class ConsumerServiceAccountTestCase(ProviderRegistryIsolation, APITestCase):
     def test_consumer_gets_403_on_an_unknown_type(self):
         response = self.client.post(SYNC_URL, search_payload("Unknown"), format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ProviderErrorIsNotEchoedTestCase(ProviderRegistryIsolation, SimpleTestCase):
+    """A ValueError raised inside a provider is a server error, not echoed to the caller."""
+
+    def setUp(self):
+        super().setUp()
+        register_record_provider("Household", f"{FIXTURES}.ProviderRaisingValueError")
+        self.factory = APIRequestFactory()
+
+    def test_provider_value_error_gives_a_generic_500(self):
+        request = self.factory.post(SYNC_URL, search_payload("Household"), format="json")
+        force_authenticate(request, user=user_holding(PROVIDER_RIGHT))
+        response = sync_search(request)
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertNotIn("hh_secret", str(response.data))
+
+    def test_invalid_page_size_is_still_a_400(self):
+        request = self.factory.post(SYNC_URL, search_payload("Household", page_size=0), format="json")
+        force_authenticate(request, user=user_holding(PROVIDER_RIGHT))
+        response = sync_search(request)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class CallbackRedirectTestCase(SimpleTestCase):
+    """The async callback is posted to the sender's URL only, never to a redirect target."""
+
+    def test_callback_does_not_follow_redirects(self):
+        from api_dci.tasks import BackgroundSearchTask
+
+        with mock.patch("api_dci.tasks.requests.post") as post:
+            BackgroundSearchTask._post_callback("https://mis.example.org/registry/on-search", {})
+        self.assertIs(post.call_args.kwargs.get("allow_redirects"), False)

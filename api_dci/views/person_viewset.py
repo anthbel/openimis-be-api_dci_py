@@ -19,7 +19,9 @@ from ..serializers import (
 from ..converters.person_converter import PersonConverter
 from ..permissions import DCISearchPermissions
 from ..config import get_registry_type
-from ..record_providers import provider_search_args, run_provider_search, search_target
+from ..record_providers import (
+    InvalidSearchRequest, provider_search_args, run_provider_search, search_target,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +142,7 @@ def _provider_sync_search(request, provider, validated_data):
         records, next_cursor = run_provider_search(
             provider, request.user, validated_data, search_request
         )
-    except ValueError as e:
+    except InvalidSearchRequest as e:
         return _error_response(str(e), status.HTTP_400_BAD_REQUEST)
     except PermissionDenied:
         return _error_response("Permission denied", status.HTTP_403_FORBIDDEN)
@@ -402,7 +404,7 @@ def async_search(request):
                 )
             try:
                 provider_search_args(validated_data, search_requests[0])
-            except ValueError as e:
+            except InvalidSearchRequest as e:
                 return _error_response(str(e), status.HTTP_400_BAD_REQUEST)
 
         # Queue background processing
