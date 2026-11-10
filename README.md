@@ -299,6 +299,52 @@ The module uses OpenIMIS Individual permissions:
 - **Update**: `individual.gql_mutation_update_individuals_perms`
 - **Delete**: `individual.gql_mutation_delete_individuals_perms`
 
+Sync and async search of a record provider type require the provider's right instead
+(see Record Providers).
+
+## Record Providers
+
+Other modules can serve record types other than Person through `sync/search` and
+`async/search`. A provider implements:
+
+- `required_right() -> str`: the right a caller must hold to search this type;
+- `search(user, query, cursor, limit) -> (records, next_cursor)`: one page, with
+  `next_cursor` an opaque string, or `None` after the last page.
+
+Register one with the `record_providers` setting of the `api_dci` module configuration
+(`{reg_record_type: dotted path}`) or with
+`api_dci.record_providers.register_record_provider(reg_record_type, dotted_path)`.
+Paths are resolved when registered; a path that does not resolve stops startup.
+`Person`, `Farmer` and `Member` stay with the Person search.
+
+Search picks its permission from `search_criteria.reg_record_type` before any other check:
+
+| `reg_record_type` | Permission |
+| --- | --- |
+| absent, `Person`, `Farmer`, `Member` | `individual.gql_query_individuals_perms` |
+| registered provider type | the provider's `required_right()` |
+| anything else, or a message mixing types | refused (403) |
+
+A provider page is requested and returned in the SPDCI envelope:
+
+- page size: `search_criteria.pagination.page_size` (1 to 100, default 100);
+- cursor: `header.meta.cursor` on the request, `header.meta.next_cursor` on the response
+  (`null` after the last page);
+- records: `search_response[].data.reg_records`, with `data.reg_record_type`.
+
+The SPDCI `pagination` objects hold only integer `page_size`, `page_number` and
+`total_count`, so the cursor travels in `header.meta`, which the standard leaves to the
+implementation.
+
+`api_dci.client.DCISearchClient(base_url, credential_env)` pulls these pages from another
+registry. It accepts only `https://` URLs, sends the bearer token held in the environment
+key `credential_env`, and raises `DCIClientConfigurationError`, `DCITransportError`,
+`DCIHTTPError` or `DCIResponseError`.
+
+Receivers pull provider pages on their own schedule; nothing is pushed to them. Person
+records are pushed to subscribers only when `DCI_SUBSCRIBE_INDIVIDUAL_SIGNAL=True`, and
+it defaults to `False`.
+
 ## Module Structure
 
 ```
@@ -308,6 +354,8 @@ openimis-be-api_dci_py/
 │   ├── apps.py              # Django app configuration
 │   ├── urls.py              # URL routing
 │   ├── permissions.py       # Permission classes
+│   ├── record_providers.py  # Record provider registry and search dispatch
+│   ├── client.py            # Outbound DCI search client
 │   ├── serializers/         # DCI serializers
 │   │   ├── __init__.py
 │   │   └── person_serializer.py
