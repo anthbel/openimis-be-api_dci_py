@@ -315,15 +315,15 @@ Register one with the `record_providers` setting of the `api_dci` module configu
 (`{reg_record_type: dotted path}`) or with
 `api_dci.record_providers.register_record_provider(reg_record_type, dotted_path)`.
 Paths are resolved when registered; a path that does not resolve stops startup.
-`Person`, `Farmer` and `Member` stay with the Person search.
+`Person`, `Farmer` and `Member` cannot be registered: they stay with the Person search.
 
 Search picks its permission from `search_criteria.reg_record_type` before any other check:
 
-| `reg_record_type` | Permission |
-| --- | --- |
-| absent, `Person`, `Farmer`, `Member` | `individual.gql_query_individuals_perms` |
-| registered provider type | the provider's `required_right()` |
-| anything else, or a message mixing types | refused (403) |
+| `reg_record_type` | Search | Permission |
+| --- | --- | --- |
+| registered provider type | the provider | the provider's `required_right()` |
+| absent, or any type not registered | Person (Individual) | `individual.gql_query_individuals_perms` |
+| a provider type mixed with another type in one message | none | refused (403) |
 
 A provider page is requested and returned in the SPDCI envelope:
 

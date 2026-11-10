@@ -95,15 +95,16 @@ class DCISearchPermissions(BasePermission):
     """
     Gate of sync and async search, chosen by reg_record_type before any other check.
 
-    A registered provider type takes the provider's gate, a Person type (or no type)
-    takes DCIPersonPermissions, and anything else is denied.
+    A registered provider type takes the provider's gate, any other type (or no type)
+    takes DCIPersonPermissions, and a message mixing a provider type with another is
+    denied.
     """
 
     def has_permission(self, request, view):
         try:
             provider = search_target(request.data)
         except Exception:
-            logger.warning("DCI search denied: record type not served", exc_info=True)
+            logger.warning("DCI search denied: search target not resolved", exc_info=True)
             return False
         if provider is None:
             return DCIPersonPermissions().has_permission(request, view)

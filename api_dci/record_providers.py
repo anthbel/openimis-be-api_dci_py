@@ -21,7 +21,7 @@ from .config import REGISTRY_TYPES
 
 logger = logging.getLogger(__name__)
 
-# Record types served by the Individual search; a provider cannot take them.
+# Record types reserved for the Individual search; a provider cannot take them.
 PERSON_RECORD_TYPES = frozenset(
     {"Person"} | {registry["record_type"] for registry in REGISTRY_TYPES.values()}
 )
@@ -31,8 +31,8 @@ MAX_PAGE_SIZE = 100
 _providers = {}
 
 
-class UnknownRecordType(Exception):
-    """A search names a record type that is neither Person nor a registered provider."""
+class MixedRecordTypes(Exception):
+    """A search message mixes a provider record type with another target."""
 
 
 def register_record_provider(reg_record_type, dotted_path):
@@ -112,22 +112,18 @@ def search_target(request_data):
     """
     The provider serving every search in this message, or None for a Person search.
 
-    A criteria without reg_record_type is a Person search. Raises UnknownRecordType when
-    a declared type is neither a Person type nor registered, or when the message mixes
-    targets.
+    A criteria whose reg_record_type is a registered provider type goes to that provider;
+    any other criteria, with or without reg_record_type, is a Person search. Raises
+    MixedRecordTypes when the message mixes a provider type with another target.
     """
     targets = set()
     for record_type in _declared_record_types(request_data):
-        if record_type is _ABSENT or (
-            isinstance(record_type, str) and record_type in PERSON_RECORD_TYPES
-        ):
+        if isinstance(record_type, str) and record_type in _providers:
+            targets.add(record_type)
+        else:
             targets.add(None)
-            continue
-        if not isinstance(record_type, str) or record_type not in _providers:
-            raise UnknownRecordType(f"Unknown reg_record_type {record_type!r}")
-        targets.add(record_type)
     if len(targets) > 1:
-        raise UnknownRecordType("One message cannot mix record types")
+        raise MixedRecordTypes("One message cannot mix a provider record type with another")
     record_type = targets.pop() if targets else None
     return get_record_provider(record_type) if record_type else None
 

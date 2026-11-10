@@ -221,16 +221,23 @@ class DCISearchPermissionsTestCase(ProviderRegistryIsolation, SimpleTestCase):
             self._checked_rights(search_payload("Household")), (True, [PROVIDER_RIGHT])
         )
 
-    def test_unknown_type_is_denied_without_any_check(self):
-        for record_type in ("Unknown", "", None, 7, ["Household"]):
+    def test_unregistered_type_is_a_person_search(self):
+        for record_type in ("SRPerson", "Beneficiary", "Individual", "", None, 7,
+                            ["Household"]):
             with self.subTest(record_type=record_type):
                 self.assertEqual(
-                    self._checked_rights(search_payload(record_type)), (False, [])
+                    self._checked_rights(search_payload(record_type)),
+                    (True, [PERSON_QUERY_RIGHT]),
                 )
 
     def test_mixed_types_in_one_message_are_denied(self):
         person_item = search_payload("Person")["message"]["search_request"][0]
         payload = search_payload("Household", extra_items=[person_item])
+        self.assertEqual(self._checked_rights(payload), (False, []))
+
+    def test_provider_type_mixed_with_an_unregistered_type_is_denied(self):
+        other_item = search_payload("SRPerson")["message"]["search_request"][0]
+        payload = search_payload("Household", extra_items=[other_item])
         self.assertEqual(self._checked_rights(payload), (False, []))
 
     def test_unreadable_body_is_denied(self):
@@ -304,13 +311,17 @@ class ProviderSyncSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(FakeHouseholdProvider.calls, [])
 
-    def test_unknown_type_is_refused_not_searched_as_person(self):
-        with mock.patch("individual.models.Individual.objects") as individuals:
-            response = self._post(search_payload("Unknown"), user=user_holding(
-                PROVIDER_RIGHT, PERSON_QUERY_RIGHT
-            ))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        individuals.filter.assert_not_called()
+    def test_unregistered_type_is_searched_as_person(self):
+        person_user = user_holding(PROVIDER_RIGHT, PERSON_QUERY_RIGHT)
+        statuses = {}
+        for record_type in (_ABSENT, "SRPerson"):
+            with self.subTest(record_type=record_type), \
+                    mock.patch("individual.models.Individual.objects") as individuals:
+                response = self._post(search_payload(record_type), user=person_user)
+                statuses[record_type] = response.status_code
+                individuals.filter.assert_called()
+        self.assertEqual(statuses["SRPerson"], statuses[_ABSENT])
+        self.assertEqual(FakeHouseholdProvider.calls, [])
 
 
 class ProviderAsyncSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
@@ -338,6 +349,14 @@ class ProviderAsyncSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
             response = self._post(search_payload("Unknown"))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         task.assert_not_called()
+
+    def test_unregistered_type_is_queued_as_a_person_search(self):
+        person_user = user_holding(PERSON_QUERY_RIGHT)
+        with mock.patch("api_dci.tasks.BackgroundSearchTask") as task:
+            response = self._post(search_payload("SRPerson"), user=person_user)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        task.assert_called_once()
+        self.assertIsNone(task.call_args.kwargs["provider"])
 
     def test_provider_type_is_queued_with_its_provider_and_user(self):
         with mock.patch("api_dci.tasks.BackgroundSearchTask") as task:
