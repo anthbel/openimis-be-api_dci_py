@@ -14,10 +14,12 @@ class DCIConfig:
         """
         Check if Individual subscription notifications are enabled.
 
+        Off unless DCI_SUBSCRIBE_INDIVIDUAL_SIGNAL is set to 'true'.
+
         Returns:
             bool: True if notifications should be sent for Individual events
         """
-        return os.environ.get('DCI_SUBSCRIBE_INDIVIDUAL_SIGNAL', 'True').lower() == 'true'
+        return os.environ.get('DCI_SUBSCRIBE_INDIVIDUAL_SIGNAL', 'False').lower() == 'true'
 
     @classmethod
     def get_notification_timeout_seconds(cls):
