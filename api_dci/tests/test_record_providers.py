@@ -348,6 +348,48 @@ class ProviderAsyncSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
         self.assertIs(kwargs["user"], self.consumer)
         task.return_value.start.assert_called_once_with()
 
+    def test_provider_callback_must_be_https(self):
+        for sender_uri in (None, "", "http://mis.example.org/on-search", "mis.example.org"):
+            payload = search_payload("Household")
+            if sender_uri is None:
+                payload["header"].pop("sender_uri")
+            else:
+                payload["header"]["sender_uri"] = sender_uri
+            with self.subTest(sender_uri=sender_uri), \
+                    mock.patch("api_dci.tasks.BackgroundSearchTask") as task:
+                response = self._post(payload)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                task.assert_not_called()
+
+
+class PersonSearchThroughSearchGateTestCase(ProviderRegistryIsolation, SimpleTestCase):
+    """A holder of the Person query right passes the gate for Person, not for providers."""
+
+    def setUp(self):
+        super().setUp()
+        register_record_provider("Household", PROVIDER_PATH)
+        self.factory = APIRequestFactory()
+        self.person_reader = user_holding(PERSON_QUERY_RIGHT)
+
+    def _post(self, view, url, payload):
+        request = self.factory.post(url, payload, format="json")
+        force_authenticate(request, user=self.person_reader)
+        return view(request)
+
+    def test_person_reader_passes_the_gate_on_sync_and_async_search(self):
+        # An empty body fails validation, so 400 means the permission check passed.
+        for view, url in ((sync_search, SYNC_URL), (async_search, ASYNC_URL)):
+            with self.subTest(url=url):
+                response = self._post(view, url, {})
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_person_reader_is_refused_a_provider_type(self):
+        for view, url in ((sync_search, SYNC_URL), (async_search, ASYNC_URL)):
+            with self.subTest(url=url):
+                response = self._post(view, url, search_payload("Household"))
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(FakeHouseholdProvider.calls, [])
+
 
 class ProviderBackgroundSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
     """The background task posts the provider page and never queries Individual."""

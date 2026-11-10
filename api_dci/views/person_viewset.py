@@ -4,6 +4,7 @@ DCI Person ViewSet
 REST API views for DCI Person sync/search operations.
 """
 import logging
+from urllib.parse import urlsplit
 
 from django.core.exceptions import PermissionDenied
 from rest_framework import status
@@ -393,6 +394,12 @@ def async_search(request):
 
         provider = search_target(request.data)
         if provider is not None:
+            sender_uri = validated_data['header'].get('sender_uri') or ''
+            parts = urlsplit(sender_uri)
+            if parts.scheme.lower() != 'https' or not parts.netloc:
+                return _error_response(
+                    "header.sender_uri must be an https:// URL", status.HTTP_400_BAD_REQUEST
+                )
             try:
                 provider_search_args(validated_data, search_requests[0])
             except ValueError as e:
