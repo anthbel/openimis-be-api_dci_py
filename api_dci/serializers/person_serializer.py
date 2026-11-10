@@ -6,6 +6,8 @@ Serializers for DCI standard message format.
 from rest_framework import serializers
 from datetime import datetime
 
+from ..config import get_reg_type_value
+
 
 class DCISignatureSerializer(serializers.Serializer):
     """DCI message signature"""
@@ -123,19 +125,7 @@ class DCISearchResponseSerializer(serializers.Serializer):
         Returns:
             dict: DCI response data formatted per specified registry type
         """
-        # Common header structure
-        header = {
-            'version': '1.0.0',
-            'message_id': f"response-{request_data['header']['message_id']}",
-            'message_ts': datetime.utcnow().isoformat() + 'Z',
-            'action': 'on-search',
-            'sender_id': request_data['header'].get('receiver_id', 'openimis'),
-            'sender_uri': request_data['header'].get('sender_uri', ''),
-            'receiver_id': request_data['header']['sender_id'],
-            'total_count': len(persons),
-            'is_msg_encrypted': request_data['header'].get('is_msg_encrypted', False),
-            'meta': request_data['header'].get('meta', {})
-        }
+        header = cls._response_header(request_data, len(persons))
 
         # FR (Farmer Registry) format - SPDCI FR spec
         if format_type == 'fr':
@@ -208,6 +198,57 @@ class DCISearchResponseSerializer(serializers.Serializer):
                     ]
                 }
             }
+
+    @staticmethod
+    def _response_header(request_data, total_count):
+        """Header of a search response, addressed back to the request's sender."""
+        return {
+            'version': '1.0.0',
+            'message_id': f"response-{request_data['header']['message_id']}",
+            'message_ts': datetime.utcnow().isoformat() + 'Z',
+            'action': 'on-search',
+            'sender_id': request_data['header'].get('receiver_id', 'openimis'),
+            'sender_uri': request_data['header'].get('sender_uri', ''),
+            'receiver_id': request_data['header']['sender_id'],
+            'total_count': total_count,
+            'is_msg_encrypted': request_data['header'].get('is_msg_encrypted', False),
+            'meta': request_data['header'].get('meta', {})
+        }
+
+    @classmethod
+    def create_record_response(cls, request_data, reg_record_type, records, next_cursor,
+                               transaction_id, reference_id=""):
+        """
+        Create the SPDCI search response for one page of a record provider.
+
+        The records go in search_response[].data.reg_records. The cursor of the next
+        page goes in header.meta.next_cursor (None after the last page); the standard's
+        pagination block is left out, since a provider page has no total_count.
+        """
+        header = cls._response_header(request_data, len(records))
+        header['status'] = 'succ'
+        header['meta'] = {'next_cursor': next_cursor}
+        return {
+            'signature': request_data.get('signature', ""),
+            'header': header,
+            'message': {
+                'transaction_id': transaction_id,
+                'correlation_id': transaction_id,
+                'search_response': [
+                    {
+                        "reference_id": reference_id,
+                        "timestamp": datetime.utcnow().isoformat() + 'Z',
+                        "status": "succ",
+                        "data": {
+                            "version": "1.0.0",
+                            "reg_type": get_reg_type_value(),
+                            "reg_record_type": reg_record_type,
+                            "reg_records": records,
+                        }
+                    }
+                ]
+            }
+        }
 
     @classmethod
     def create_ack_response(cls, request_data, transaction_id):
