@@ -11,8 +11,12 @@ from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from api_dci.permissions import DCIPersonPermissions
+from api_dci.permissions import DCIPersonCreatePermissions, DCIPersonPermissions
+from api_dci.views.person_create_view import person_create
 from api_dci.views.txn_status_viewset import txn_status
+
+QUERY_RIGHT = "individual.gql_query_individuals_perms"
+CREATE_RIGHT = "individual.gql_mutation_create_individuals_perms"
 
 
 def _txn_status_payload():
@@ -93,7 +97,7 @@ class DCIPersonPermissionsUnitTestCase(SimpleTestCase):
             has_perm=lambda perm: checked.append(perm) or True,
         )
         self.assertTrue(self.permission.has_permission(self._request("POST", user), None))
-        self.assertEqual(checked, ["individual.gql_query_individuals_perms"])
+        self.assertEqual(checked, [QUERY_RIGHT])
 
     def test_missing_right_denies(self):
         user = SimpleNamespace(is_authenticated=True, has_perm=lambda perm: False)
@@ -106,3 +110,42 @@ class DCIPersonPermissionsUnitTestCase(SimpleTestCase):
     def test_unmapped_method_denies(self):
         user = SimpleNamespace(is_authenticated=True, has_perm=lambda perm: True)
         self.assertFalse(self.permission.has_permission(self._request("OPTIONS", user), None))
+
+
+def _user_holding(*rights):
+    return SimpleNamespace(is_authenticated=True, has_perm=lambda perm: perm in rights)
+
+
+class DCIPersonCreatePermissionsViewTestCase(SimpleTestCase):
+    """person_create requires the Individual create right, not the query right."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    def _post_person_create_as(self, user):
+        request = self.factory.post("/api/api_dci/registry/person", {}, format="json")
+        force_authenticate(request, user=user)
+        return person_create(request)
+
+    def test_query_only_user_gets_403(self):
+        response = self._post_person_create_as(_user_holding(QUERY_RIGHT))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_right_passes_the_permission_check(self):
+        # An empty body fails validation, so 400 means the permission check passed.
+        response = self._post_person_create_as(_user_holding(CREATE_RIGHT))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class DCIPersonCreatePermissionsUnitTestCase(SimpleTestCase):
+    """DCIPersonCreatePermissions checks the create right on POST."""
+
+    def test_post_checks_the_create_right(self):
+        checked = []
+        user = SimpleNamespace(
+            is_authenticated=True,
+            has_perm=lambda perm: checked.append(perm) or True,
+        )
+        request = SimpleNamespace(method="POST", user=user)
+        self.assertTrue(DCIPersonCreatePermissions().has_permission(request, None))
+        self.assertEqual(checked, [CREATE_RIGHT])
