@@ -17,7 +17,7 @@ from ..serializers import (
     DCIPersonResponseSerializer,
 )
 from ..converters.person_converter import PersonConverter
-from ..permissions import DCIPersonPermissions
+from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
     **Response:** Returns person_id in format `openimis:individual:{uuid}`
 
-    **Permissions:** Requires `individual.add_individual`
+    **Permissions:** Requires `individual.gql_mutation_create_individuals_perms`
     ''',
     request=DCIPersonCreateRequestSerializer,
     responses={
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
     }
 )
 @api_view(['POST'])
-@permission_classes([DCIPersonPermissions])
+@permission_classes([DCIPersonCreatePermissions])
 def person_create(request):
     """
     Create Person/Individual from SPDCI data.
