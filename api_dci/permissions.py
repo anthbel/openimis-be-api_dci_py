@@ -7,6 +7,8 @@ import logging
 
 from rest_framework.permissions import BasePermission
 
+from .record_providers import search_target
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,3 +59,52 @@ class DCIPersonCreatePermissions(DCIPersonPermissions):
     permission_map = {
         'POST': 'individual.gql_mutation_create_individuals_perms',
     }
+
+
+class RecordProviderPermission(BasePermission):
+    """Gate of one record provider: POST requires the right named by its required_right()."""
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    def has_permission(self, request, view):
+        """Return True only when the user holds the provider's right."""
+        # Any error while evaluating the provider or the user denies access.
+        try:
+            return self._user_has_provider_right(request)
+        except Exception:
+            logger.exception("DCI record provider permission check failed; access denied")
+            return False
+
+    def _user_has_provider_right(self, request):
+        if request.method != 'POST':
+            return False
+        user = getattr(request, 'user', None)
+        if not user or getattr(user, 'is_authenticated', False) is not True:
+            return False
+        right = self.provider.required_right()
+        # An empty right would be granted to everyone by has_perms.
+        if not isinstance(right, str) or not right.strip():
+            logger.error("Record provider %r declares no usable right; access denied",
+                         self.provider)
+            return False
+        return user.has_perm(right) is True
+
+
+class DCISearchPermissions(BasePermission):
+    """
+    Gate of sync and async search, chosen by reg_record_type before any other check.
+
+    A registered provider type takes the provider's gate, a Person type (or no type)
+    takes DCIPersonPermissions, and anything else is denied.
+    """
+
+    def has_permission(self, request, view):
+        try:
+            provider = search_target(request.data)
+        except Exception:
+            logger.warning("DCI search denied: record type not served", exc_info=True)
+            return False
+        if provider is None:
+            return DCIPersonPermissions().has_permission(request, view)
+        return RecordProviderPermission(provider).has_permission(request, view)

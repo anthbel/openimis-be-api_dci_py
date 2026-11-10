@@ -3,6 +3,9 @@ DCI Person ViewSet
 
 REST API views for DCI Person sync/search operations.
 """
+import logging
+
+from django.core.exceptions import PermissionDenied
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -13,8 +16,11 @@ from ..serializers import (
     DCISearchResponseSerializer,
 )
 from ..converters.person_converter import PersonConverter
-from ..permissions import DCIPersonPermissions
+from ..permissions import DCISearchPermissions
 from ..config import get_registry_type
+from ..record_providers import provider_search_args, run_provider_search, search_target
+
+logger = logging.getLogger(__name__)
 
 
 # Helper functions for SPDCI query processing
@@ -118,6 +124,40 @@ def _apply_predicate_expression(queryset, expression):
     return queryset
 
 
+def _error_response(message, http_status):
+    return Response({'header': {'status': 'error', 'message': message}}, status=http_status)
+
+
+def _provider_sync_search(request, provider, validated_data):
+    """Serve one page of a record provider type."""
+    message_data = validated_data['message']
+    search_requests = message_data.get('search_request') or []
+    if not search_requests:
+        return _error_response("No search_request provided", status.HTTP_400_BAD_REQUEST)
+    search_request = search_requests[0]
+    try:
+        records, next_cursor = run_provider_search(
+            provider, request.user, validated_data, search_request
+        )
+    except ValueError as e:
+        return _error_response(str(e), status.HTTP_400_BAD_REQUEST)
+    except PermissionDenied:
+        return _error_response("Permission denied", status.HTTP_403_FORBIDDEN)
+    except Exception:
+        logger.exception("DCI record provider search failed")
+        return _error_response("Record search failed", status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    response_data = DCISearchResponseSerializer.create_record_response(
+        request_data=request.data,
+        reg_record_type=search_request['search_criteria']['reg_record_type'],
+        records=records,
+        next_cursor=next_cursor,
+        transaction_id=message_data['transaction_id'],
+        reference_id=search_request.get('reference_id', ''),
+    )
+    return Response(response_data, status=status.HTTP_200_OK)
+
+
 @extend_schema(
     tags=['DCI Registry'],
     summary='Search for Person records',
@@ -133,7 +173,7 @@ def _apply_predicate_expression(queryset, expression):
     }
 )
 @api_view(['POST'])
-@permission_classes([DCIPersonPermissions])
+@permission_classes([DCISearchPermissions])
 def sync_search(request):
     """
     DCI sync/search endpoint for Person records.
@@ -184,6 +224,10 @@ def sync_search(request):
         )
 
     validated_data = serializer.validated_data
+
+    provider = search_target(request.data)
+    if provider is not None:
+        return _provider_sync_search(request, provider, validated_data)
 
     try:
         message_data = validated_data['message']
@@ -317,7 +361,7 @@ def sync_search(request):
     }
 )
 @api_view(['POST'])
-@permission_classes([DCIPersonPermissions])
+@permission_classes([DCISearchPermissions])
 def async_search(request):
     """
     DCI async search endpoint for Person records.
@@ -347,11 +391,20 @@ def async_search(request):
         if not search_requests:
             raise ValueError("No search_request provided")
 
+        provider = search_target(request.data)
+        if provider is not None:
+            try:
+                provider_search_args(validated_data, search_requests[0])
+            except ValueError as e:
+                return _error_response(str(e), status.HTTP_400_BAD_REQUEST)
+
         # Queue background processing
         from ..tasks import BackgroundSearchTask
         task = BackgroundSearchTask(
             request_data=request.data,
-            search_requests=search_requests
+            search_requests=search_requests,
+            provider=provider,
+            user=request.user,
         )
         task.start()
 
