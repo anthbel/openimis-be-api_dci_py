@@ -3,7 +3,11 @@ DCI API Permission Classes
 
 Permission classes for DCI API endpoints.
 """
+import logging
+
 from rest_framework.permissions import BasePermission
+
+logger = logging.getLogger(__name__)
 
 
 class DCIPersonPermissions(BasePermission):
@@ -23,8 +27,17 @@ class DCIPersonPermissions(BasePermission):
         For update operations, requires individual.gql_mutation_update_individuals_perms
         For delete operations, requires individual.gql_mutation_delete_individuals_perms
         """
+        # Any error while evaluating the user denies access.
+        try:
+            return self._user_has_required_permission(request)
+        except Exception:
+            logger.exception("DCI permission check failed; access denied")
+            return False
+
+    def _user_has_required_permission(self, request):
         # Require authentication for all DCI Person endpoints
-        if not hasattr(request, 'user') or not request.user or not request.user.is_authenticated:
+        user = getattr(request, 'user', None)
+        if not user or getattr(user, 'is_authenticated', False) is not True:
             return False
 
         # Map HTTP methods to required permissions
@@ -41,9 +54,5 @@ class DCIPersonPermissions(BasePermission):
         if not required_permission:
             return False
 
-        # Check if user has the required permission
-        try:
-            return request.user.has_perm(required_permission)
-        except AttributeError:
-            # User object doesn't support has_perm
-            return True
+        # A user object without has_perm raises AttributeError, which denies.
+        return user.has_perm(required_permission) is True
