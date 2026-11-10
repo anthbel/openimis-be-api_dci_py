@@ -103,8 +103,9 @@ Control notification behavior via environment variables:
 
 ```bash
 # Enable/disable Individual notifications (default: False)
-# When True, every Individual create, update and delete sends the full
-# Person record to every active subscription whose event type and filter match.
+# When True, every Individual create, update and delete sends the Person
+# record (id, first and last name, date of birth, json_ext) to every active
+# subscription whose event type and filter match.
 DCI_SUBSCRIBE_INDIVIDUAL_SIGNAL=False
 
 # HTTP timeout for notifications in seconds (default: 30)
