@@ -103,8 +103,11 @@ Control notification behavior via environment variables:
 
 ```bash
 # Enable/disable Individual notifications (default: False)
-# When True, every Individual create, update and delete sends the Person
-# record (id, first and last name, date of birth, json_ext) to every active
+# When True, api_dci binds handlers after the service signals
+# 'individual_service.create_or_update' (UPDATE event) and
+# 'individual_service.delete' (DEREGISTER event). A handler notifies only
+# when the signal's result has an id; it then sends the Person record
+# (id, first and last name, date of birth, json_ext) to every active
 # subscription whose event type and filter match.
 DCI_SUBSCRIBE_INDIVIDUAL_SIGNAL=False
 
