@@ -11,6 +11,7 @@ import logging
 
 from ..serializers import DCITxnStatusRequestSerializer, DCITxnStatusResponseSerializer
 from ..permissions import DCIPersonPermissions
+from ..utils.log_safety import error_fields
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def txn_status(request):
 
     serializer = DCITxnStatusRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DCI TxnStatus] Validation errors: {serializer.errors}")
+        logger.error(f"[DCI TxnStatus] Validation errors: {error_fields(serializer.errors)}")
         return Response(
             {
                 'header': {'status': 'error', 'message': 'Invalid request format'},

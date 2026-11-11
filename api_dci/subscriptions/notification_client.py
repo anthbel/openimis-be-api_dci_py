@@ -13,6 +13,7 @@ import aiohttp
 import orjson
 
 from ..models import DCISubscription
+from ..utils.log_safety import exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +103,8 @@ class DCINotificationClient:
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(
-                        f"Notification to {subscribers[i].subscription_code} failed with exception",
-                        exc_info=result
+                        f"Notification to {subscribers[i].subscription_code} failed with exception: "
+                        f"{exception_trace(result)}"
                     )
                     final_results.append(
                         SubscriberNotificationOutput(
@@ -148,8 +149,7 @@ class DCINotificationClient:
             headers = self._prepare_headers(subscription)
 
             logger.info(
-                f"Sending DCI notification to {subscription.sender_uri} "
-                f"for subscription {subscription.subscription_code}"
+                f"Sending DCI notification for subscription {subscription.subscription_code}"
             )
 
             async with session.post(
@@ -168,7 +168,7 @@ class DCINotificationClient:
                 if status_code >= 400:
                     logger.error(
                         f"Notification to {subscription.subscription_code} failed "
-                        f"with status {status_code}: {response_body}"
+                        f"with status {status_code}"
                     )
                     return SubscriberNotificationOutput(
                         subscription=subscription,
@@ -199,8 +199,7 @@ class DCINotificationClient:
 
         except Exception as e:
             logger.error(
-                f"Notification to {subscription.subscription_code} failed: {e}",
-                exc_info=True
+                f"Notification to {subscription.subscription_code} failed: {exception_trace(e)}"
             )
             return SubscriberNotificationOutput(
                 subscription=subscription,

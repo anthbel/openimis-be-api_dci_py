@@ -39,3 +39,13 @@ class ProviderRaisingValueError:
 
     def search(self, user, query, cursor, limit):
         raise ValueError("internal detail: column hh_secret does not exist")
+
+
+class ProviderEchoingQueryInError:
+    """A provider whose search fails with an error message that repeats the query."""
+
+    def required_right(self):
+        return PROVIDER_RIGHT
+
+    def search(self, user, query, cursor, limit):
+        raise LookupError(f"no beneficiary matches {query}")

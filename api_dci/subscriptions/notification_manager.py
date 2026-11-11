@@ -11,6 +11,7 @@ from typing import List, Dict, Iterable
 from core.datetimes import ad_datetime
 from ..models import DCISubscription, DCINotificationLog
 from ..configurations import DCIConfig
+from ..utils.log_safety import exception_trace
 from .notification_client import DCINotificationClient, SubscriberNotificationOutput
 
 logger = logging.getLogger(__name__)
@@ -108,8 +109,8 @@ class DCINotificationManager:
 
             except Exception as e:
                 logger.error(
-                    f"Failed to notify subscription {subscription.subscription_code}: {e}",
-                    exc_info=True
+                    f"Failed to notify subscription {subscription.subscription_code}: "
+                    f"{exception_trace(e)}"
                 )
                 # Log the failure
                 log_entry = self._save_notification_log(
@@ -253,9 +254,6 @@ class DCINotificationManager:
                 f"success={result.notification_success}"
             )
         except Exception as e:
-            logger.error(
-                f"Failed to save notification log: {e}",
-                exc_info=True
-            )
+            logger.error(f"Failed to save notification log: {exception_trace(e)}")
 
         return log_entry

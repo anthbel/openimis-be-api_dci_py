@@ -7,6 +7,7 @@ import logging
 from typing import List
 
 from ..models import DCISubscription
+from ..utils.log_safety import exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -124,15 +125,14 @@ class DCISubscriptionFilter:
 
             # Unknown filter format - be conservative and include it
             logger.warning(
-                f"Unknown filter format for subscription {subscription.subscription_code}: "
-                f"{filter_criteria}"
+                f"Unknown filter format for subscription {subscription.subscription_code}"
             )
             return True
 
         except Exception as e:
             logger.error(
-                f"Error matching filter for subscription {subscription.subscription_code}: {e}",
-                exc_info=True
+                f"Error matching filter for subscription {subscription.subscription_code}: "
+                f"{exception_trace(e)}"
             )
             # On error, include the subscription to be safe
             return True
@@ -180,7 +180,7 @@ class DCISubscriptionFilter:
         """
         # TODO: Implement JSONPath evaluation
         # For now, match all to avoid excluding subscribers
-        logger.debug(f"Expression filter not fully implemented: {expression}")
+        logger.debug("Expression filter not fully implemented")
         return True
 
     def _match_predicate(self, predicate: dict, resource_data: dict) -> bool:
@@ -198,5 +198,5 @@ class DCISubscriptionFilter:
         """
         # TODO: Implement predicate evaluation
         # For now, match all to avoid excluding subscribers
-        logger.debug(f"Predicate filter not fully implemented: {predicate}")
+        logger.debug("Predicate filter not fully implemented")
         return True
