@@ -2,6 +2,7 @@
 Tests for record providers: registry, startup resolution, per-provider permission
 and dispatch of sync and async search on reg_record_type.
 """
+import uuid
 from types import SimpleNamespace
 from unittest import mock
 
@@ -71,7 +72,8 @@ def search_payload(reg_record_type=_ABSENT, cursor=None, page_size=None, query=N
 
 
 def user_holding(*rights):
-    return SimpleNamespace(is_authenticated=True, has_perm=lambda perm: perm in rights)
+    return SimpleNamespace(pk=uuid.uuid4(), is_authenticated=True,
+                           has_perm=lambda perm: perm in rights)
 
 
 class ProviderRegistryIsolation:

@@ -302,6 +302,31 @@ The module uses OpenIMIS Individual permissions:
 Sync and async search of a record provider type require the provider's right instead
 (see Record Providers).
 
+## Rate Limit
+
+Sync search, async search and `GET registry/person/{id}` share one request budget per
+authenticated account: 120 requests per minute by default. A request over the budget gets
+HTTP 429 with a `Retry-After` header (seconds) and DRF's `{"detail": "..."}` body, the
+same body as a refused (403) search. Requests refused by authentication or permissions do
+not count.
+
+The rate is read, in this order, from:
+
+1. the Django setting `API_DCI_SEARCH_THROTTLE_RATE`;
+2. the environment variable `API_DCI_SEARCH_THROTTLE_RATE`;
+3. the default `120/min`.
+
+It is written `<count>/<period>` with a period of `s`, `min`, `hour` or `day` (DRF reads
+the first letter), for example `300/min` or `5000/hour`. `none` or an empty value turns
+the limit off. A malformed rate stops startup. The assembly's `REST_FRAMEWORK` setting
+needs no change.
+
+The counts live in Django's default cache. With the default `LocMemCache` each worker
+process keeps its own counts, so the effective limit is the configured rate per process
+(times the number of workers). Configure a shared cache through the `CACHE_BACKEND` and
+`CACHE_URL` environment variables (for example Redis) for the limit to hold per account
+across workers.
+
 ## Record Providers
 
 Other modules can serve record types other than Person through `sync/search` and
@@ -354,6 +379,7 @@ openimis-be-api_dci_py/
 │   ├── apps.py              # Django app configuration
 │   ├── urls.py              # URL routing
 │   ├── permissions.py       # Permission classes
+│   ├── throttling.py        # Per-account rate limit of search and person reads
 │   ├── record_providers.py  # Record provider registry and search dispatch
 │   ├── client.py            # Outbound DCI search client
 │   ├── serializers/         # DCI serializers

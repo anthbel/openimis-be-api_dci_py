@@ -27,11 +27,14 @@ class ApiDciConfig(AppConfig):
         """
         from core.models import ModuleConfiguration
         from .record_providers import load_record_providers
+        from .throttling import check_search_throttle_rate
 
         cfg = ModuleConfiguration.get_or_default(MODULE_NAME, DEFAULT_CFG)
         self._load_config(cfg)
         # An unresolvable provider path stops startup.
         load_record_providers(ApiDciConfig.record_providers)
+        # A malformed search rate stops startup.
+        check_search_throttle_rate()
 
         # Import and bind subscription signals
         from .signals import bind_service_signals

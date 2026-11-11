@@ -4,13 +4,14 @@ DCI Person Detail ViewSet
 Retrieves a single Person by ID.
 """
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
 from ..converters.person_converter import PersonConverter
 from ..permissions import DCIPersonPermissions
+from ..throttling import DCISearchRateThrottle
 
 
 @extend_schema(
@@ -71,6 +72,7 @@ from ..permissions import DCIPersonPermissions
 )
 @api_view(['GET'])
 @permission_classes([DCIPersonPermissions])
+@throttle_classes([DCISearchRateThrottle])
 def person_detail(request, person_id):
     """
     Retrieve a Person by ID.
