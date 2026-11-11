@@ -22,6 +22,7 @@ from ..config import get_registry_type
 from ..record_providers import (
     InvalidSearchRequest, provider_search_args, run_provider_search, search_target,
 )
+from ..utils.log_safety import error_fields, exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -146,8 +147,8 @@ def _provider_sync_search(request, provider, validated_data):
         return _error_response(str(e), status.HTTP_400_BAD_REQUEST)
     except PermissionDenied:
         return _error_response("Permission denied", status.HTTP_403_FORBIDDEN)
-    except Exception:
-        logger.exception("DCI record provider search failed")
+    except Exception as e:
+        logger.error("DCI record provider search failed: %s", exception_trace(e))
         return _error_response("Record search failed", status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     response_data = DCISearchResponseSerializer.create_record_response(
@@ -206,15 +207,10 @@ def sync_search(request):
 
     Response follows DCI message format with matching Person records.
     """
-    # Debug logging
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.error(f"[DEBUG] Received request data: {request.data}")
-
     # Validate request
     serializer = DCISearchRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DEBUG] Validation errors: {serializer.errors}")
+        logger.error(f"[DCI Sync Search] Validation errors: {error_fields(serializer.errors)}")
         return Response(
             {
                 'header': {

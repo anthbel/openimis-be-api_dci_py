@@ -11,6 +11,7 @@ from openIMIS.openimisapps import openimis_apps
 
 from .subscriptions import DCINotificationManager, DCISubscriptionFilter
 from .configurations import DCIConfig
+from .utils.log_safety import exception_trace
 
 logger = logging.getLogger(__name__)
 imis_modules = openimis_apps()
@@ -78,8 +79,7 @@ def bind_service_signals():
 
         except Exception as e:
             logger.error(
-                f"Error processing Individual REGISTER notification: {e}",
-                exc_info=True
+                f"Error processing Individual REGISTER notification: {exception_trace(e)}"
             )
 
     def on_individual_update(**kwargs):
@@ -126,8 +126,7 @@ def bind_service_signals():
 
         except Exception as e:
             logger.error(
-                f"Error processing Individual UPDATE notification: {e}",
-                exc_info=True
+                f"Error processing Individual UPDATE notification: {exception_trace(e)}"
             )
 
     def on_individual_delete(**kwargs):
@@ -174,8 +173,7 @@ def bind_service_signals():
 
         except Exception as e:
             logger.error(
-                f"Error processing Individual DEREGISTER notification: {e}",
-                exc_info=True
+                f"Error processing Individual DEREGISTER notification: {exception_trace(e)}"
             )
 
     # Bind signals
@@ -226,7 +224,7 @@ def _individual_to_dict(individual) -> dict:
         return record
 
     except Exception as e:
-        logger.error(f"Error converting Individual to dict: {e}", exc_info=True)
+        logger.error(f"Error converting Individual to dict: {exception_trace(e)}")
         return {
             'id': str(getattr(individual, 'id', 'unknown')),
             'error': 'Failed to serialize Individual'

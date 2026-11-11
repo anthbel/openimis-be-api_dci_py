@@ -15,6 +15,7 @@ from ..serializers import (
     DCINotifyResponseSerializer,
 )
 from ..permissions import DCIPersonPermissions
+from ..utils.log_safety import error_fields, exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def notify(request):
     # Validate request
     serializer = DCINotifyRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DCI Notify] Validation errors: {serializer.errors}")
+        logger.error(f"[DCI Notify] Validation errors: {error_fields(serializer.errors)}")
         return Response(
             {
                 'header': {
@@ -73,31 +74,25 @@ def notify(request):
     validated_data = serializer.validated_data
 
     try:
-        header_data = validated_data['header']
         message_data = validated_data['message']
         transaction_id = message_data['transaction_id']
         notify_requests = message_data.get('notify_request', [])
 
-        sender_id = header_data.get('sender_id')
-
         logger.info(
             f"[DCI Notify] Processing {len(notify_requests)} notifications "
-            f"from {sender_id}, transaction {transaction_id}"
+            f"for transaction {transaction_id}"
         )
 
         # Process each notification
         for notify_item in notify_requests:
-            reference_id = notify_item.get('reference_id', '')
-            subscription_id = notify_item.get('subscription_id', '')
             data = notify_item.get('data', {})
 
             event_type = data.get('event_type', 'UNKNOWN')
             reg_record_type = data.get('reg_record_type', 'Unknown')
-            reg_record = data.get('reg_record', {})
 
             logger.info(
                 f"[DCI Notify] Received {event_type} event for {reg_record_type} "
-                f"(subscription {subscription_id}, ref {reference_id})"
+                f"(transaction {transaction_id})"
             )
 
             # TODO: Process the notification
@@ -106,9 +101,6 @@ def notify(request):
             # 2. Update local database if we maintain a cache
             # 3. Trigger business logic based on event type
             # 4. Log to audit table
-
-            # For now, just log it
-            logger.debug(f"[DCI Notify] Event data: {reg_record}")
 
         # Build ACK response (SPDCI FR format)
         response_data = DCINotifyResponseSerializer.create_ack_response(
@@ -135,7 +127,7 @@ def notify(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Notify] Unexpected error: {e}", exc_info=True)
+        logger.error(f"[DCI Notify] Unexpected error: {exception_trace(e)}")
         return Response(
             {
                 'header': {

@@ -21,6 +21,7 @@ from ..serializers import (
 )
 from ..permissions import DCIPersonPermissions
 from ..models import DCISubscription
+from ..utils.log_safety import error_fields, exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def subscribe(request):
     # Validate request
     serializer = DCISubscribeRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DCI Subscribe] Validation errors: {serializer.errors}")
+        logger.error(f"[DCI Subscribe] Validation errors: {error_fields(serializer.errors)}")
         return Response(
             {
                 'header': {
@@ -120,13 +121,13 @@ def subscribe(request):
 
             logger.info(
                 f"[DCI Subscribe] Created subscription {subscription_code} "
-                f"for {sender_id} (event_type={event_type})"
+                f"for transaction {transaction_id} (event_type={event_type})"
             )
 
             subscription_codes.append((reference_id, subscription_code))
 
     except ValueError as e:
-        logger.error(f"[DCI Subscribe] Value error: {e}")
+        logger.error(f"[DCI Subscribe] Value error: {type(e).__name__}")
         return Response(
             {
                 'header': {
@@ -137,7 +138,7 @@ def subscribe(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Subscribe] Unexpected error: {e}", exc_info=True)
+        logger.error(f"[DCI Subscribe] Unexpected error: {exception_trace(e)}")
         return Response(
             {
                 'header': {
@@ -193,7 +194,7 @@ def unsubscribe(request):
     # Validate request
     serializer = DCIUnsubscribeRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DCI Unsubscribe] Validation errors: {serializer.errors}")
+        logger.error(f"[DCI Unsubscribe] Validation errors: {error_fields(serializer.errors)}")
         return Response(
             {
                 'header': {
@@ -228,7 +229,7 @@ def unsubscribe(request):
 
                 if not subscription:
                     logger.warning(
-                        f"[DCI Unsubscribe] Subscription {subscription_id} not found"
+                        f"[DCI Unsubscribe] Subscription not found (transaction {transaction_id})"
                     )
                     unsubscribe_results.append((
                         reference_id,
@@ -245,7 +246,7 @@ def unsubscribe(request):
                         f"Subscription {subscription_id} already inactive"
                     ))
                     logger.warning(
-                        f"[DCI Unsubscribe] Subscription {subscription_id} already inactive"
+                        f"[DCI Unsubscribe] Subscription {subscription.subscription_code} already inactive"
                     )
                     continue
 
@@ -270,11 +271,12 @@ def unsubscribe(request):
 
                 if updated_count > 0:
                     logger.info(
-                        f"[DCI Unsubscribe] Deactivated subscription {subscription_id}"
+                        f"[DCI Unsubscribe] Deactivated subscription {subscription.subscription_code}"
                     )
                 else:
                     logger.warning(
-                        f"[DCI Unsubscribe] Subscription {subscription_id} was not updated (possibly already inactive)"
+                        f"[DCI Unsubscribe] Subscription {subscription.subscription_code} was not updated "
+                        f"(possibly already inactive)"
                     )
 
                 unsubscribe_results.append((
@@ -285,8 +287,8 @@ def unsubscribe(request):
 
             except Exception as e:
                 logger.error(
-                    f"[DCI Unsubscribe] Error processing subscription {subscription_id}: {e}",
-                    exc_info=True
+                    f"[DCI Unsubscribe] Error processing a subscription of transaction "
+                    f"{transaction_id}: {exception_trace(e)}"
                 )
                 unsubscribe_results.append((
                     reference_id,
@@ -295,7 +297,7 @@ def unsubscribe(request):
                 ))
 
     except ValueError as e:
-        logger.error(f"[DCI Unsubscribe] Value error: {e}")
+        logger.error(f"[DCI Unsubscribe] Value error: {type(e).__name__}")
         return Response(
             {
                 'header': {
@@ -306,7 +308,7 @@ def unsubscribe(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Unsubscribe] Unexpected error: {e}", exc_info=True)
+        logger.error(f"[DCI Unsubscribe] Unexpected error: {exception_trace(e)}")
         return Response(
             {
                 'header': {

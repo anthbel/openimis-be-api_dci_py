@@ -19,6 +19,7 @@ from ..serializers import (
 from ..converters.person_converter import PersonConverter
 from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
+from ..utils.log_safety import error_fields, exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ def person_create(request):
     # Validate request
     serializer = DCIPersonCreateRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DCI Person Create] Validation error: {serializer.errors}")
+        logger.error(f"[DCI Person Create] Validation error: {error_fields(serializer.errors)}")
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
@@ -153,7 +154,7 @@ def person_create(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except ValueError as e:
-        logger.error(f"[DCI Person Create] ValueError: {str(e)}")
+        logger.error(f"[DCI Person Create] Invalid data: {type(e).__name__}")
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
@@ -163,7 +164,7 @@ def person_create(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.exception(f"[DCI Person Create] Unexpected error: {str(e)}")
+        logger.error(f"[DCI Person Create] Unexpected error: {exception_trace(e)}")
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
@@ -226,12 +227,12 @@ def person_update(request, person_id):
         }
     }
     """
-    logger.info(f"[DCI Person Update] Received request for {person_id} from {request.user}")
+    logger.info(f"[DCI Person Update] Received request from {request.user}")
 
     # Validate request
     serializer = DCIPersonUpdateRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.error(f"[DCI Person Update] Validation error: {serializer.errors}")
+        logger.error(f"[DCI Person Update] Validation error: {error_fields(serializer.errors)}")
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
@@ -261,7 +262,7 @@ def person_update(request, person_id):
         # Parse person_id to get UUID
         uuid = PersonConverter.parse_person_id(person_id)
         if not uuid:
-            logger.error(f"[DCI Person Update] Invalid person_id format: {person_id}")
+            logger.error("[DCI Person Update] Invalid person_id format")
             return Response(
                 DCIPersonResponseSerializer.create_error_response(
                     request_data=request.data,
@@ -328,7 +329,7 @@ def person_update(request, person_id):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except ValueError as e:
-        logger.error(f"[DCI Person Update] ValueError: {str(e)}")
+        logger.error(f"[DCI Person Update] Invalid data: {type(e).__name__}")
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
@@ -338,7 +339,7 @@ def person_update(request, person_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.exception(f"[DCI Person Update] Unexpected error: {str(e)}")
+        logger.error(f"[DCI Person Update] Unexpected error: {exception_trace(e)}")
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,

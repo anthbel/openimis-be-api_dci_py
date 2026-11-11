@@ -3,6 +3,7 @@ import requests
 import logging
 
 from .record_providers import run_provider_search
+from .utils.log_safety import exception_trace
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,10 @@ class BackgroundSearchTask(threading.Thread):
             self._post_callback(sender_uri, response_data)
 
         except Exception as e:
-            logger.error(f"DCI Async Search background task failed: {str(e)}")
+            logger.error(
+                "DCI Async Search background task failed for transaction %s: %s",
+                self.request_data.get('message', {}).get('transaction_id'), exception_trace(e),
+            )
 
     @staticmethod
     def _post_callback(sender_uri, response_data):
