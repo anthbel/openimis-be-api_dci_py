@@ -1,8 +1,9 @@
 """
 Rate limit of the DCI search views, per authenticated account.
 
-An empty body fails validation with 400 after the permission and throttle checks, so a
-400 means the request was let through and a 429 means it was throttled.
+An empty body (or a malformed person id) is refused with 400 after the permission and
+throttle checks, so a 400 means the request was let through and a 429 means it was
+throttled.
 """
 import os
 import uuid
@@ -16,11 +17,13 @@ from django.test import SimpleTestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from api_dci.views.person_detail_view import person_detail
 from api_dci.views.person_viewset import async_search, sync_search
 
 RATE_SETTING = "API_DCI_SEARCH_THROTTLE_RATE"
 SYNC_URL = "/api/api_dci/registry/sync/search"
 ASYNC_URL = "/api/api_dci/registry/async/search"
+DETAIL_URL = "/api/api_dci/registry/person/not-a-person-id"
 SEARCH_VIEWS = ((sync_search, SYNC_URL), (async_search, ASYNC_URL))
 
 
@@ -89,6 +92,21 @@ class SearchThrottleTestCase(SimpleTestCase):
         self.assertEqual(self._post(async_search, ASYNC_URL, user).status_code, 400)
         self.assertEqual(self._post(sync_search, SYNC_URL, user).status_code, 429)
         self.assertEqual(self._post(async_search, ASYNC_URL, user).status_code, 429)
+
+    def _get_detail(self, user):
+        request = self.factory.get(DETAIL_URL)
+        force_authenticate(request, user=user)
+        return person_detail(request, person_id="not-a-person-id")
+
+    @override_settings(**{RATE_SETTING: "2/min"})
+    def test_person_detail_shares_the_search_budget(self):
+        user = search_account()
+        self.assertEqual(self._get_detail(user).status_code, 400)
+        self.assertEqual(self._post(sync_search, SYNC_URL, user).status_code, 400)
+        response = self._get_detail(user)
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertTrue(1 <= int(response["Retry-After"]) <= 60)
+        self.assertEqual(self._get_detail(search_account()).status_code, 400)
 
     def test_default_rate_is_120_per_minute(self):
         with override_settings(**{RATE_SETTING: "unused"}):
