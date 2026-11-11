@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from django.core.exceptions import PermissionDenied
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 
@@ -18,6 +18,7 @@ from ..serializers import (
 )
 from ..converters.person_converter import PersonConverter
 from ..permissions import DCISearchPermissions
+from ..throttling import DCISearchRateThrottle
 from ..config import get_registry_type
 from ..record_providers import (
     InvalidSearchRequest, provider_search_args, run_provider_search, search_target,
@@ -178,6 +179,7 @@ def _provider_sync_search(request, provider, validated_data):
 )
 @api_view(['POST'])
 @permission_classes([DCISearchPermissions])
+@throttle_classes([DCISearchRateThrottle])
 def sync_search(request):
     """
     DCI sync/search endpoint for Person records.
@@ -361,6 +363,7 @@ def sync_search(request):
 )
 @api_view(['POST'])
 @permission_classes([DCISearchPermissions])
+@throttle_classes([DCISearchRateThrottle])
 def async_search(request):
     """
     DCI async search endpoint for Person records.

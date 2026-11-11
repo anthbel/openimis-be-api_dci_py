@@ -4,6 +4,7 @@ test routes the client's request into the real sync_search view.
 """
 import json as jsonlib
 import os
+import uuid
 from types import SimpleNamespace
 from unittest import mock
 
@@ -214,7 +215,7 @@ class DCISearchClientRoundTripTestCase(ClientTestBase):
             "Household", "api_dci.tests.record_provider_fixtures.FakeHouseholdProvider"
         )
         factory = APIRequestFactory()
-        consumer = SimpleNamespace(is_authenticated=True,
+        consumer = SimpleNamespace(pk=uuid.uuid4(), is_authenticated=True,
                                    has_perm=lambda perm: perm == PROVIDER_RIGHT)
 
         def post(url, json=None, **kwargs):
