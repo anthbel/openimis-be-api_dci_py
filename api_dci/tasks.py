@@ -2,6 +2,8 @@ import threading
 import requests
 import logging
 
+from django.db import connection
+
 from .record_providers import run_provider_search
 from .utils.log_safety import exception_trace
 
@@ -23,6 +25,13 @@ class BackgroundSearchTask(threading.Thread):
         self.user = user
 
     def run(self):
+        # The thread opens its own database connection; nothing else closes it.
+        try:
+            self._search_and_post()
+        finally:
+            connection.close()
+
+    def _search_and_post(self):
         try:
             from individual.models import Individual
             from .converters.person_converter import PersonConverter
