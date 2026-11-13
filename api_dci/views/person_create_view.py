@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 import logging
 
 from ..serializers import (
@@ -118,6 +118,7 @@ def person_create(request):
 
         # Get user for audit trail
         user = request.user
+        User = get_user_model()
         if not isinstance(user, User):
             # Fallback to Admin user
             user = User.objects.filter(username='Admin').first()
@@ -295,6 +296,7 @@ def person_update(request, person_id):
 
         # Get user for audit trail
         user = request.user
+        User = get_user_model()
         if not isinstance(user, User):
             # Fallback to Admin user
             user = User.objects.filter(username='Admin').first()

@@ -144,6 +144,7 @@ class PersonViewsLogNoRequestContentTestCase(LogCaptureMixin, LogInMixin, APITes
         payload = search_payload("sync", {"dob": NATIONAL_ID, "lastName": FAMILY_NAME},
                                  sender_uri=CALLBACK_URI)
         with mock.patch.object(BackgroundSearchTask, "start", BackgroundSearchTask.run), \
+                mock.patch("api_dci.tasks.connection"), \
                 mock.patch("api_dci.tasks.requests.post") as post:
             response = self.client.post(ASYNC_URL, payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
@@ -319,6 +320,7 @@ class ProviderSearchLogsNoRequestContentTestCase(LogCaptureMixin, SimpleTestCase
         from api_dci.tasks import BackgroundSearchTask
 
         with mock.patch.object(BackgroundSearchTask, "start", BackgroundSearchTask.run), \
+                mock.patch("api_dci.tasks.connection"), \
                 mock.patch("api_dci.tasks.requests.post") as post:
             response = self._post(async_search, ASYNC_URL)
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)

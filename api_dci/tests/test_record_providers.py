@@ -427,6 +427,7 @@ class ProviderBackgroundSearchTestCase(ProviderRegistryIsolation, SimpleTestCase
             user=consumer,
         )
         with mock.patch("api_dci.tasks.requests.post") as post, \
+                mock.patch("api_dci.tasks.connection"), \
                 mock.patch("individual.models.Individual.objects") as individuals:
             task.run()
         individuals.filter.assert_not_called()
