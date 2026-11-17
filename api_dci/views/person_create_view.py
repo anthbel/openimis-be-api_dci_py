@@ -19,7 +19,7 @@ from ..serializers import (
 )
 from ..converters.person_converter import PersonConverter
 from ..masking import check_person_sent_back
-from ..person_search import visible_persons
+from ..person_search import PersonLocationRefused, creation_location, visible_persons
 from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
 from ..utils.log_safety import error_fields, error_text, log_error
@@ -119,6 +119,19 @@ def person_create(request):
         # Get registry type from config
         registry_type = get_registry_type()
 
+        # The person is created at its address location, which must be one of the caller's.
+        try:
+            location = creation_location(request.user, person_data)
+        except PersonLocationRefused as e:
+            return Response(
+                DCIPersonResponseSerializer.create_error_response(
+                    request_data=request.data,
+                    error_message=str(e),
+                    operation="create"
+                ),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Get user for audit trail
         user = request.user
         User = get_user_model()
@@ -140,7 +153,8 @@ def person_create(request):
             spdci_person=person_data,
             registry_type=registry_type,
             user=user,
-            metadata=metadata
+            metadata=metadata,
+            location=location,
         )
 
         # Generate person_id

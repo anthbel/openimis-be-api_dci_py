@@ -198,37 +198,21 @@ class PersonConverterTestCase(TestCase):
         self.assertEqual(result['first_name'], "John")
         self.assertEqual(result['last_name'], "Doe")
         self.assertEqual(result['dob'], date(1990, 1, 15))
-        self.assertEqual(result['gender_code'], 'M')
-        self.assertEqual(result['phone'], "+1234567890")
-        self.assertEqual(result['email'], "john.doe@example.com")
-
-        # Verify json_ext contains sex
-        self.assertIn('json_ext', result)
+        # Sex, phone and email are json_ext keys, not Individual fields
+        self.assertNotIn('gender_code', result)
+        self.assertNotIn('phone', result)
+        self.assertNotIn('email', result)
         self.assertEqual(result['json_ext']['sex'], 'male')
+        self.assertEqual(result['json_ext']['phone'], "+1234567890")
+        self.assertEqual(result['json_ext']['email'], "john.doe@example.com")
 
-    def test_dci_person_to_individual_data_gender_reverse_mapping(self):
+    def test_dci_person_to_individual_data_sex_in_json_ext(self):
         """
-        Test reverse gender mapping from DCI Person to Individual.
+        Test that the DCI sex is kept as given in json_ext.
         """
-        # Test male -> M
-        person = {"sex": "male"}
-        result = PersonConverter.dci_person_to_individual_data(person)
-        self.assertEqual(result['gender_code'], 'M')
-
-        # Test female -> F
-        person = {"sex": "female"}
-        result = PersonConverter.dci_person_to_individual_data(person)
-        self.assertEqual(result['gender_code'], 'F')
-
-        # Test others -> O
-        person = {"sex": "others"}
-        result = PersonConverter.dci_person_to_individual_data(person)
-        self.assertEqual(result['gender_code'], 'O')
-
-        # Test unknown -> U
-        person = {"sex": "unknown"}
-        result = PersonConverter.dci_person_to_individual_data(person)
-        self.assertEqual(result['gender_code'], 'U')
+        for sex in ("male", "female", "others", "unknown"):
+            result = PersonConverter.dci_person_to_individual_data({"sex": sex})
+            self.assertEqual(result, {"json_ext": {"sex": sex}})
 
     def test_dci_person_to_individual_data_missing_fields(self):
         """

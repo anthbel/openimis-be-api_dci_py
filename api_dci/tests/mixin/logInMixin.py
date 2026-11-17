@@ -27,7 +27,7 @@ class LogInMixin:
         """
         Get or create a test user for API authentication.
 
-        The user holds the DCI person rights through a role.
+        The user holds the DCI person rights through a role, in the district of ``dci_village``.
 
         Returns:
             User: Test user instance
@@ -38,13 +38,25 @@ class LogInMixin:
 
         user = User.objects.filter(username=self._test_username).first()
         if user is None:
+            from django.core.cache import caches
             from core.test_helpers import create_test_interactive_user
+            from location.test_helpers import assign_user_districts
 
             user = create_test_interactive_user(
                 username=self._test_username, password=self._test_password,
                 roles=[self._dci_role().id],
             )
+            assign_user_districts(user, [self.dci_village().parent.parent.code])
+            caches["location"].clear()
+            caches["default"].clear()
         return user
+
+    @staticmethod
+    def dci_village():
+        """A village in the district of the test user, for the persons it reads, writes and creates."""
+        from location.test_helpers import create_test_village
+
+        return create_test_village({"name": "DCI test village", "code": "DCITV"})
 
     @staticmethod
     def _dci_role():

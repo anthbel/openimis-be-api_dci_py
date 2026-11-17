@@ -41,11 +41,13 @@ class JsonExtManager:
             "spdci_data": {}
         }
 
-        if registry_type == "FR":
+        # The registry type compares in upper case: config.get_registry_type gives it in lower case.
+        kind = str(registry_type or "").upper()
+        if kind == "FR":
             base_structure["spdci_data"] = JsonExtManager._extract_fr_data(spdci_person)
-        elif registry_type == "SR":
+        elif kind == "SR":
             base_structure["spdci_data"] = JsonExtManager._extract_sr_data(spdci_person)
-        elif registry_type == "IBR":
+        elif kind == "IBR":
             base_structure["spdci_data"] = JsonExtManager._extract_ibr_data(spdci_person)
         else:
             # Fallback: store raw data
@@ -237,11 +239,12 @@ class JsonExtManager:
         current_json_ext["registry_metadata"] = current_metadata
 
         # Extract and update registry-specific data
-        if registry_type == "FR":
+        kind = str(registry_type or "").upper()
+        if kind == "FR":
             new_spdci_data = JsonExtManager._extract_fr_data(spdci_person)
-        elif registry_type == "SR":
+        elif kind == "SR":
             new_spdci_data = JsonExtManager._extract_sr_data(spdci_person)
-        elif registry_type == "IBR":
+        elif kind == "IBR":
             new_spdci_data = JsonExtManager._extract_ibr_data(spdci_person)
         else:
             new_spdci_data = spdci_person

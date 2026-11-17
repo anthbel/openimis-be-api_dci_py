@@ -234,21 +234,104 @@ class DCIPersonAccessTest(APITestCase):
 
     # -- create ----------------------------------------------------------------------------------------------
 
-    def test_create_saves_the_person_with_the_caller_as_user(self):
+    def create(self, user, **person):
         payload = {
             "signature": "",
             "header": header("create"),
             "message": {"transaction_id": "txn-access-create", "person": {
                 "name": {"given_name": "Created", "family_name": "Throughdci"},
-                "birth_date": "1991-02-03T00:00:00Z",
+                "birth_date": "1991-02-03T00:00:00Z", **person,
             }},
         }
-        response = self.client_for(self.creator).post(CREATE_URL, data=payload, format="json")
+        return self.client_for(user).post(CREATE_URL, data=payload, format="json")
+
+    def test_create_saves_the_person_with_the_caller_as_user(self):
+        response = self.create(self.creator, address=[{"type": "residential", "location_code": "DCIA-V"}])
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
         person = Individual.objects.get(last_name="Throughdci")
         self.assertEqual(person.user_created, self.creator)
         self.assertEqual(person.user_updated, self.creator)
         self.assertEqual(str(person.dob), "1991-02-03")
+
+    def test_create_places_the_person_at_its_address_location_with_its_contacts_in_json_ext(self):
+        response = self.create(
+            self.creator, address=[{"type": "residential", "location_code": "DCIA-V"}], sex="female",
+            phone_number=["+25779000009"], email=["created@example.org"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        person = Individual.objects.get(last_name="Throughdci")
+        self.assertEqual(person.location_id, self.village.id)
+        self.assertEqual((person.json_ext["sex"], person.json_ext["phone"], person.json_ext["email"]),
+                         ("female", "+25779000009", "created@example.org"))
+        self.assertNotIn("Created", str(person.json_ext))
+        self.assertNotIn("1991-02-03", str(person.json_ext))
+
+    def test_create_outside_the_callers_locations_or_without_one_is_refused(self):
+        for address in (None, [], [{"type": "residential"}], [{"location_code": "DCIA-V2"}],
+                        [{"location_code": "NO-SUCH-CODE"}],
+                        [{"location_code": "DCIA-V"}, {"location_code": "DCIA-W"}]):
+            with self.subTest(address=address):
+                response = self.create(self.creator, **({} if address is None else {"address": address}))
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+                self.assertNotIn("NO-SUCH-CODE", response.content.decode())
+        self.assertFalse(Individual.objects.filter(last_name="Throughdci").exists())
+
+    # -- persons and households without a location -----------------------------------------------------------
+
+    def household(self, code, location, *members):
+        """A household of ``members`` at ``location``; the locations a membership copies are set back after."""
+        group = Group(code=code, location=location, json_ext={})
+        group.save(user=self.admin)
+        placed = {member.id: member.location_id for member in members}
+        for member in members:
+            GroupIndividual(group=group, individual=member, role=GroupIndividual.Role.HEAD).save(user=self.admin)
+        Group.objects.filter(id=group.id).update(location=location)
+        for member_id, location_id in placed.items():
+            Individual.objects.filter(id=member_id).update(location_id=location_id)
+        return group
+
+    def assert_hidden(self, person):
+        self.assertEqual(self.client_for(self.reader).get(DETAIL_URL.format(person.id)).status_code,
+                         status.HTTP_404_NOT_FOUND)
+        response = self.search(self.reader, by_fields(lastName=person.last_name))
+        self.assertEqual(family_names(response.json()), [])
+        self.assertEqual(self.update(person).status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(Individual.objects.get(id=person.id).last_name, person.last_name)
+
+    def test_a_person_without_a_location_is_no_ones(self):
+        self.assert_hidden(self.person("Nolocfirst", "Accessnoloc", None))
+
+    def test_a_member_elsewhere_of_a_household_without_a_location_is_hidden(self):
+        member = self.person("Farmemberfirst", "Accessfarmember", self.other_village)
+        group = self.household("DCIA-GN", None, member)
+        self.assertIsNone(Group.objects.get(id=group.id).location_id)
+        self.assert_hidden(member)
+
+    def test_a_person_without_a_location_in_a_household_of_the_callers_locations_is_hidden(self):
+        member = self.person("Nolocmemberfirst", "Accessnolocmember", None)
+        self.household("DCIA-GL", self.village, member)
+        self.assertIsNone(Individual.objects.get(id=member.id).location_id)
+        self.assert_hidden(member)
+
+    def test_a_member_elsewhere_of_a_household_of_the_callers_locations_is_read(self):
+        member = self.person("Movedfirst", "Accessmoved", self.other_village)
+        self.household("DCIA-GM", self.village, member)
+        self.assertEqual(Individual.objects.get(id=member.id).location_id, self.other_village.id)
+        self.assertEqual(self.client_for(self.reader).get(DETAIL_URL.format(member.id)).status_code,
+                         status.HTTP_200_OK)
+        self.assertEqual(family_names(self.search(self.reader, by_fields(lastName="Accessmoved")).json()),
+                         ["Accessmoved"])
+
+    def test_a_superuser_reads_a_person_without_a_location(self):
+        superuser = create_test_interactive_user(username="dci_access_super2", custom_props={"is_superuser": True})
+        person = self.person("Nolocfirst", "Accessnolocsuper", None)
+        self.assertEqual(self.client_for(superuser).get(DETAIL_URL.format(person.id)).status_code,
+                         status.HTTP_200_OK)
+
+    def test_a_user_without_interactive_locations_reads_no_person(self):
+        from types import SimpleNamespace
+        from api_dci.person_search import visible_persons
+
+        self.assertEqual(list(visible_persons(SimpleNamespace(is_superuser=False, _u=object()))), [])
 
     # -- the DCI search attributes ---------------------------------------------------------------------------
 
@@ -292,6 +375,16 @@ class DCIPersonAccessTest(APITestCase):
         response = self.update(self.far)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, response.content)
         self.assertEqual(Individual.objects.get(id=self.far.id).last_name, "Accessfar")
+
+    def test_an_update_sending_the_phone_mask_back_is_refused(self):
+        payload = {
+            "signature": "",
+            "header": header("update"),
+            "message": {"transaction_id": "txn-access-update", "person": {"phone_number": [MASKED]}},
+        }
+        response = self.client_for(self.updater).put(UPDATE_URL.format(self.near.id), data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+        self.assertEqual(Individual.objects.get(id=self.near.id).json_ext["phone"], "+25779000001")
 
     def test_update_of_a_person_in_the_callers_locations_is_written(self):
         response = self.update(self.near)

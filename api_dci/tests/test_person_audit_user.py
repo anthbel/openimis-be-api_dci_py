@@ -28,7 +28,8 @@ def person_message(action):
         },
         "message": {
             "transaction_id": "txn-audit-001",
-            "person": {"name": {"given_name": "Aline", "family_name": "Audit"}},
+            "person": {"name": {"given_name": "Aline", "family_name": "Audit"},
+                       "address": [{"type": "residential", "location_code": "DCITV"}]},
         },
     }
 
@@ -56,7 +57,8 @@ class PersonAuditUserTestCase(LogInMixin, APITestCase):
     def test_update_records_the_authenticated_user(self):
         from individual.models import Individual
 
-        individual = Individual(first_name="Aline", last_name="Audit", dob="1990-01-15", json_ext={})
+        individual = Individual(first_name="Aline", last_name="Audit", dob="1990-01-15", json_ext={},
+                                location=self.dci_village())
         individual.save(user=self.test_user)
         person_id = f"openimis:individual:{individual.uuid}"
         with mock.patch("api_dci.views.person_create_view.get_registry_type", return_value="SR"), \

@@ -1,7 +1,7 @@
 """
 The Individual queryset of a DCI Person search.
 
-A search reads only the persons its caller may read (row security by location), and a filter on a field the
+A search reads only the persons its caller may read (``visible_persons``), and a filter on a field the
 person mask masks is refused to a caller without the masked-data right: its results would tell the masked
 values. The querysets are lazy, so building one checks the filters without reading the database.
 """
@@ -23,15 +23,72 @@ PREDICATE_ATTRIBUTES = {
 }
 
 
-def visible_persons(user):
-    """The non-deleted persons ``user`` may read; none without a user."""
-    from individual.models import Individual
+def _unrestricted(user):
+    """Whether ``user`` reads and writes persons of every location, as location's ``is_allowed`` decides."""
+    from django.conf import settings
+    from location.apps import LocationConfig
 
+    return LocationConfig.no_location_check or getattr(user, "is_superuser", False) is True \
+        or not settings.ROW_SECURITY
+
+
+def allowed_location_ids(user):
+    """The ids of the locations ``user`` may read and write persons of: its own and the locations under them.
+    None for a user without interactive locations."""
+    from core.models import InteractiveUser
+    from location.apps import LocationConfig
+    from location.models import LocationManager, extend_allowed_locations
+
+    if not isinstance(getattr(user, "_u", None), InteractiveUser):
+        return None
+    return extend_allowed_locations(LocationManager().get_allowed_ids(user), True, LocationConfig.location_types)
+
+
+def visible_persons(user):
+    """The non-deleted persons ``user`` may read and write; none without a user. Unless unrestricted, a person
+    counts when its own location is in the user's locations, or when it has a location and a household whose
+    location is in them: a person or a household without a location is no one's."""
+    from django.db.models import Q
+    from individual.models import GroupIndividual, Individual
+
+    persons = Individual.objects.filter(is_deleted=False)
     if user is None:
         return Individual.objects.none()
-    # Row security joins the person's memberships: a person of several households would come once per membership.
-    persons = Individual.objects.filter(is_deleted=False)
-    return persons.filter(id__in=Individual.get_queryset(None, user).values("id"))
+    if _unrestricted(user):
+        return persons
+    allowed = allowed_location_ids(user)
+    if not allowed:
+        return Individual.objects.none()
+    in_households = GroupIndividual.objects.filter(
+        is_deleted=False, group__is_deleted=False, group__location_id__in=allowed).values("individual_id")
+    # A subquery: a join on the memberships would give a person once per household.
+    return persons.filter(Q(location_id__in=allowed) | Q(location__isnull=False, id__in=in_households))
+
+
+class PersonLocationRefused(ValueError):
+    """The person to create names no single location its creator may write; the message quotes no payload
+    value."""
+
+
+def creation_location(user, spdci_person):
+    """The location of a person to create: the one location its addresses name by ``location_code``, valid and
+    among the locations ``user`` may write. PersonLocationRefused otherwise."""
+    from location.models import Location
+
+    addresses = spdci_person.get("address") if isinstance(spdci_person, dict) else None
+    codes = {
+        str(address["location_code"]) for address in addresses or []
+        if isinstance(address, dict) and address.get("location_code")
+    }
+    if len(codes) != 1:
+        raise PersonLocationRefused("the person needs one address location_code")
+    locations = list(Location.objects.filter(code=codes.pop(), *Location.filter_validity())[:2])
+    if len(locations) != 1:
+        raise PersonLocationRefused("the address location_code names no single location")
+    location = locations[0]
+    if not _unrestricted(user) and location.id not in (allowed_location_ids(user) or ()):
+        raise PersonLocationRefused("the address location is not one of your locations")
+    return location
 
 
 def check_lookups(user, lookups):

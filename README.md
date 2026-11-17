@@ -315,12 +315,19 @@ Sync and async search of a record provider type require the provider's right ins
 
 ### Locations
 
-Person detail and update, sync search and the async search callback read only the persons of the caller's
-locations (`individual`'s row security, `Individual.get_queryset`): a person outside them is not
-found (HTTP 404) by detail or update and is left out of a search. An async search run without a
-user reads no person.
+Person detail and update, sync search and the async search callback read and write only the
+persons of the caller's locations (its districts and the locations under them): a person whose
+own location is one of them, or a person with a location whose household's location is one of
+them. A person without a location, and a household without a location, belong to no caller's
+locations. A person outside them is not found (HTTP 404) by detail or update and is left out of a
+search. A superuser, a deployment without row security or with location's `no_location_check`
+reads and writes every person. An async search run without a user reads no person.
 
-A person created through `POST registry/person` is saved with the caller as its creator.
+`POST registry/person` creates the person at the location its addresses name by
+`location_code`: exactly one valid location, one of the caller's locations (any location for a
+superuser); otherwise it is refused (HTTP 400). The person is saved with the caller as its
+creator. `sex`, the first `phone_number` and the first `email` are stored under the `json_ext`
+keys `sex`, `phone` and `email`.
 
 ### Masked person fields
 
