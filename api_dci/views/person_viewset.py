@@ -235,7 +235,8 @@ def async_search(request):
         if not search_requests:
             raise ValueError("No search_request provided")
 
-        if not callback_allowed(validated_data['header'].get('sender_uri')):
+        # The raw value is checked: the background task posts to it as received.
+        if not callback_allowed(request.data.get('header', {}).get('sender_uri')):
             return _error_response(
                 "header.sender_uri must be an https:// URL to an allowed callback host",
                 status.HTTP_400_BAD_REQUEST,

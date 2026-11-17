@@ -355,11 +355,13 @@ record provider request errors, authentication) keep their own messages.
 
 An async search (Person or record provider type) posts its results to `header.sender_uri`
 only when it is an `https://` URL whose host name is listed in the `callback_allowed_hosts`
-setting of the `api_dci` module configuration (for example `["mis.example.org"]`). Host
-names are compared case-insensitively and exactly (no subdomain, no wildcard); the URL may
-carry any port. While the list is empty, the default, every async search is refused.
+setting of the `api_dci` module configuration (for example `["mis.example.org"]`). The host
+is read as `requests` reads it (urllib3's URL parser) and compared case-insensitively and
+exactly (no subdomain, no wildcard); the URL may carry any port. A URL with user information
+(`user@`), a backslash, whitespace or a control character is refused. While the list is
+empty, the default, every async search is refused.
 
-A search whose `sender_uri` is missing, not https or to an unlisted host is refused before
+A search whose `sender_uri` is missing or not such a URL is refused before
 it is queued: HTTP 400 with `{"header": {"status": "error", "message": ...}}` and no
 record. The background task checks the URL again before it posts, so a host removed from
 the list after the search was queued gets no callback. The callback does not follow

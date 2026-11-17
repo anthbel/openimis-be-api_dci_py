@@ -2,6 +2,8 @@
 sender_uri is refused before the search is queued, and checked again before the callback is posted."""
 from unittest import mock
 
+import urllib3.util.connection
+
 from django.test import SimpleTestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -21,6 +23,11 @@ REFUSED_URIS = (
     "https://other.example.org/on-search", "https://mis.example.org.evil.example/on-search",
     "https://evil.example/mis.example.org", "https://mis.example.org@evil.example/on-search",
     "https://10.0.0.1/on-search", "https:///on-search",
+    # requests reads the host up to a backslash: these would connect to evil.example and 10.0.0.5.
+    "https://evil.example\\@mis.example.org/cb", "https://10.0.0.5:8443\\@mis.example.org/cb",
+    "https://mis.example.org\\cb", "https://user@mis.example.org/cb", "https://:secret@mis.example.org/cb",
+    "https://mis.example.org\t/cb", "https://mis.example.org/c b", "https://mis.example.org/cb\n",
+    "https://mis.example.org\x00.evil.example/cb", "https://mis.example.org:99999/cb",
 )
 ACCEPTED_URIS = ("https://mis.example.org/on-search", "https://MIS.Example.ORG:8443/registry/on-search")
 
@@ -112,3 +119,56 @@ class CallbackPostTestCase(SimpleTestCase):
         self.assertEqual(post.call_args.args[0], ACCEPTED_URIS[1])
         self.assertIs(post.call_args.kwargs["allow_redirects"], False)
         self.assertEqual(post.call_args.kwargs["timeout"], 10)
+
+
+class CallbackConnectionTestCase(ProviderRegistryIsolation, SimpleTestCase):
+    """The hosts the async search connects to, recorded where urllib3 opens its socket, for a search run through
+    the endpoint with its background task run in place."""
+
+    def setUp(self):
+        super().setUp()
+        register_record_provider("Household", PROVIDER_PATH)
+        self.factory = APIRequestFactory()
+        self.consumer = user_holding(PROVIDER_RIGHT)
+        self.connections = []
+
+        def create_connection(address, *args, **kwargs):
+            self.connections.append(address)
+            raise ConnectionRefusedError("no network in tests")
+
+        for patcher in (
+                mock.patch.object(urllib3.util.connection, "create_connection", create_connection),
+                mock.patch.object(BackgroundSearchTask, "start", BackgroundSearchTask.run),
+                mock.patch.object(ApiDciConfig, "callback_allowed_hosts", ALLOWED),
+                mock.patch("api_dci.tasks.connection")):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def search(self, sender_uri):
+        request = self.factory.post(
+            ASYNC_URL, with_sender_uri(search_payload("Household"), sender_uri), format="json")
+        force_authenticate(request, user=self.consumer)
+        return async_search(request)
+
+    def test_a_refused_callback_opens_no_connection(self):
+        for sender_uri in REFUSED_URIS:
+            with self.subTest(sender_uri=sender_uri):
+                self.connections.clear()
+                response = self.search(sender_uri)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(self.connections, [])
+
+    def test_the_task_posts_no_refused_callback_however_it_was_queued(self):
+        for sender_uri in REFUSED_URIS:
+            with self.subTest(sender_uri=sender_uri):
+                self.connections.clear()
+                BackgroundSearchTask._post_callback(sender_uri, {"message": {}})
+                self.assertEqual(self.connections, [])
+
+    def test_an_allowed_callback_connects_to_the_listed_host_only(self):
+        for sender_uri, port in zip(ACCEPTED_URIS, (443, 8443)):
+            with self.subTest(sender_uri=sender_uri):
+                self.connections.clear()
+                response = self.search(sender_uri)
+                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+                self.assertEqual(self.connections, [("mis.example.org", port)])
