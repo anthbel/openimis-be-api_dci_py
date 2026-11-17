@@ -297,23 +297,18 @@ class PersonConverter:
         if "sex" in dci_person:
             json_ext["sex"] = dci_person["sex"]
 
-        # Extract phone_number
+        # The first phone_number and email only: the person mask masks the phone and email keys, not a list
         if "phone_number" in dci_person:
             phones = dci_person["phone_number"]
             if isinstance(phones, list) and phones:
-                json_ext["phone"] = phones[0]  # Take first phone
-                if len(phones) > 1:
-                    json_ext["phone_numbers"] = phones
+                json_ext["phone"] = phones[0]
             elif phones:
                 json_ext["phone"] = str(phones)
 
-        # Extract email
         if "email" in dci_person:
             emails = dci_person["email"]
             if isinstance(emails, list) and emails:
-                json_ext["email"] = emails[0]  # Take first email
-                if len(emails) > 1:
-                    json_ext["emails"] = emails
+                json_ext["email"] = emails[0]
             elif emails:
                 json_ext["email"] = str(emails)
 

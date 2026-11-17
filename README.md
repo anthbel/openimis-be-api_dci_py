@@ -327,7 +327,7 @@ reads and writes every person. An async search run without a user reads no perso
 `location_code`: exactly one valid location, one of the caller's locations (any location for a
 superuser); otherwise it is refused (HTTP 400). The person is saved with the caller as its
 creator. `sex`, the first `phone_number` and the first `email` are stored under the `json_ext`
-keys `sex`, `phone` and `email`.
+keys `sex`, `phone` and `email`; further numbers and emails are not kept.
 
 ### Masked person fields
 

@@ -265,6 +265,29 @@ class DCIPersonAccessTest(APITestCase):
         self.assertNotIn("Created", str(person.json_ext))
         self.assertNotIn("1991-02-03", str(person.json_ext))
 
+    def test_create_and_update_keep_only_the_first_phone_and_email(self):
+        response = self.create(
+            self.creator, address=[{"type": "residential", "location_code": "DCIA-V"}],
+            phone_number=["+25779000009", "+25779000008"], email=["first@example.org", "second@example.org"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        person = Individual.objects.get(last_name="Throughdci")
+        self.assertEqual((person.json_ext["phone"], person.json_ext["email"]), ("+25779000009", "first@example.org"))
+        self.assertEqual(str(person.json_ext).count("+25779000009"), 1)
+        self.assertNotIn("+25779000008", str(person.json_ext))
+        self.assertNotIn("second@example.org", str(person.json_ext))
+        payload = {
+            "signature": "",
+            "header": header("update"),
+            "message": {"transaction_id": "txn-access-update", "person": {
+                "name": {"family_name": "Accessnear"}, "phone_number": ["+25779000007", "+25779000006"]}},
+        }
+        response = self.client_for(self.updater).put(UPDATE_URL.format(self.near.id), data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        stored = Individual.objects.get(id=self.near.id).json_ext
+        self.assertEqual(stored["phone"], "+25779000007")
+        self.assertEqual(str(stored).count("+25779000007"), 1)
+        self.assertNotIn("+25779000006", str(stored))
+
     def test_create_outside_the_callers_locations_or_without_one_is_refused(self):
         for address in (None, [], [{"type": "residential"}], [{"location_code": "DCIA-V2"}],
                         [{"location_code": "NO-SUCH-CODE"}],
@@ -380,10 +403,12 @@ class DCIPersonAccessTest(APITestCase):
         payload = {
             "signature": "",
             "header": header("update"),
-            "message": {"transaction_id": "txn-access-update", "person": {"phone_number": [MASKED]}},
+            "message": {"transaction_id": "txn-access-update", "person": {
+                "name": {"family_name": "Accessnear"}, "phone_number": [MASKED]}},
         }
         response = self.client_for(self.updater).put(UPDATE_URL.format(self.near.id), data=payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+        self.assertIn("phone", response.json()["message"]["error_message"])
         self.assertEqual(Individual.objects.get(id=self.near.id).json_ext["phone"], "+25779000001")
 
     def test_update_of_a_person_in_the_callers_locations_is_written(self):
