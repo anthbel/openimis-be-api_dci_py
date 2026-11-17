@@ -16,17 +16,15 @@ class DCIPersonPermissions(BasePermission):
     """
     Permission class for DCI Person API endpoints.
 
-    Uses OpenIMIS Individual module permissions to control access
-    to Person search and CRUD operations. The required right depends on
-    the HTTP method; POST is search in DCI and requires the query right.
+    The required right is the DCI person right of the HTTP method's action, as configured in
+    ApiDciConfig; POST is search in DCI and requires the query right. A superuser holds every right.
     """
 
     permission_map = {
-        'GET': 'individual.gql_query_individuals_perms',
-        'POST': 'individual.gql_query_individuals_perms',
-        'PUT': 'individual.gql_mutation_update_individuals_perms',
-        'PATCH': 'individual.gql_mutation_update_individuals_perms',
-        'DELETE': 'individual.gql_mutation_delete_individuals_perms',
+        'GET': ('person', 'query'),
+        'POST': ('person', 'query'),
+        'PUT': ('person', 'update'),
+        'PATCH': ('person', 'update'),
     }
 
     def has_permission(self, request, view):
@@ -44,20 +42,25 @@ class DCIPersonPermissions(BasePermission):
         if not user or getattr(user, 'is_authenticated', False) is not True:
             return False
 
-        required_permission = self.permission_map.get(request.method)
+        entity_action = self.permission_map.get(request.method)
+        if not entity_action:
+            return False
 
-        if not required_permission:
+        # An undeclared action (None) or an empty right list denies.
+        from .apps import configured_perms
+        rights = configured_perms(*entity_action)
+        if not rights:
             return False
 
         # A user object without has_perm raises AttributeError, which denies.
-        return user.has_perm(required_permission) is True
+        return any(user.has_perm(right) is True for right in rights)
 
 
 class DCIPersonCreatePermissions(DCIPersonPermissions):
     """Permission class for the DCI Person create endpoint: POST requires the create right."""
 
     permission_map = {
-        'POST': 'individual.gql_mutation_create_individuals_perms',
+        'POST': ('person', 'create'),
     }
 
 

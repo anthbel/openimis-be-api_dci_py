@@ -177,6 +177,13 @@ The API supports multiple SPDCI query types through a unified endpoint:
 }
 ```
 
+A predicate `attribute_name` is one of the DCI search attributes, each reading one field of the
+person: `first_name`/`firstName`, `last_name`/`lastName`, `dob`, `gender` (the `sex` key of
+`json_ext`, `male`, `female`, `others` or `unknown`), `phone` and `email` (the `phone` and `email`
+keys of `json_ext`). Any other attribute, a relation path or a lookup suffix included, is refused
+(HTTP 400, naming the attribute) to every caller. The field filters `phone` and `email` match
+part of the `json_ext` key; `gender` takes `Male`, `Female` or `Other`.
+
 3. **Expression Query (SPDCI FR)**
 ```json
 {
@@ -292,27 +299,49 @@ Authorization: Bearer <token>
 
 ## Permissions
 
-The module uses OpenIMIS Individual permissions:
+The module declares its openIMIS rights in `api_dci/apps.py` (`DJANGO_PERMS`, `_PERM_CFG`), block
+195700-195799. A role grants them; a superuser holds them all. Each `gql_*_perms` attribute of
+`ApiDciConfig` holds the right code as a decimal string in a list. Rights are not configurable:
+`ModuleConfiguration` ignores any `*_perms` key in a stored config.
 
-- **Search**: `individual.gql_query_individuals_perms`
-- **Create**: `individual.gql_mutation_create_individuals_perms`
-- **Update**: `individual.gql_mutation_update_individuals_perms`
-- **Delete**: `individual.gql_mutation_delete_individuals_perms`
+| Right | Name | Config key | Opens |
+| --- | --- | --- | --- |
+| 195701 | `api_dci.view_dci_person` | `gql_dci_person_search_perms` | Person detail, sync and async search, subscribe, unsubscribe, notify, the callbacks, transaction status |
+| 195702 | `api_dci.add_dci_person` | `gql_dci_person_create_perms` | `POST registry/person` |
+| 195703 | `api_dci.change_dci_person` | `gql_dci_person_update_perms` | `PUT registry/person/{id}/update` |
 
 Sync and async search of a record provider type require the provider's right instead
 (see Record Providers).
 
-These names are Django permissions (`app_label.codename`): no openIMIS right maps to them,
-so a role holding the Individual search right (159001) does not open the Person endpoints.
+### Locations
+
+Person detail and update, sync search and the async search callback read and write only the
+persons of the caller's locations (its districts and the locations under them): a person whose
+own location is one of them, or a person with a location whose household's location is one of
+them. A person without a location, and a household without a location, belong to no caller's
+locations. A person outside them is not found (HTTP 404) by detail or update and is left out of a
+search. A superuser, a deployment without row security or with location's `no_location_check`
+reads and writes every person. An async search run without a user reads no person.
+
+`POST registry/person` creates the person at the location its addresses name by
+`location_code`: exactly one valid location, one of the caller's locations (any location for a
+superuser); otherwise it is refused (HTTP 400). The person is saved with the caller as its
+creator. `sex`, the first `phone_number` and the first `email` are stored under the `json_ext`
+keys `sex`, `phone` and `email`; further numbers and emails are not kept.
 
 ### Masked person fields
 
 `GET registry/person/{id}`, sync search and the async search callback give each Person
 through `individual`'s person mask, with the fields other modules register, unless the
 caller holds the masked-data right (core `gql_query_enable_viewing_masked_data_perms`,
-900101); an async search run without a user gets the mask. A masked field gives the string
-mask, a masked `dob` included as `birth_date`. `PUT registry/person/{id}/update` refuses
-(HTTP 400) a field given the string mask in place of a masked value it does not hold.
+900101). A masked field gives the string mask, a masked `dob` included as `birth_date`.
+`PUT registry/person/{id}/update` refuses (HTTP 400) a field given the string mask in place of
+a masked value it does not hold.
+
+A search filter reading a masked field (a field filter such as `firstName` or `dob`, or a
+predicate on any lookup reaching one) is refused (HTTP 403, naming the lookup) to a caller
+without the masked-data right: its results would tell the masked value. An async search is
+refused before it is queued.
 
 ## Error Responses
 
@@ -367,7 +396,7 @@ Search picks its permission from `search_criteria.reg_record_type` before any ot
 | `reg_record_type` | Search | Permission |
 | --- | --- | --- |
 | registered provider type | the provider | the provider's `required_right()` |
-| absent, or any type not registered | Person (Individual) | `individual.gql_query_individuals_perms` |
+| absent, or any type not registered | Person (Individual) | the DCI person query right (195701) |
 | a provider type mixed with another type in one message | none | refused (403) |
 
 A provider page is requested and returned in the SPDCI envelope:

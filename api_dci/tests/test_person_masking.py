@@ -2,23 +2,23 @@
 import re
 from unittest import mock
 
-from django.contrib.auth.models import Permission
-from django.contrib.contenttypes.models import ContentType
+from django.core.cache import caches
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from core.rights_sync import right_id_for_permission_name
 from core.test_helpers import create_right_only_user
 from individual.apps import IndividualConfig
 from individual.data_masking import IndividualMask, may_see_masked
 from individual.models import Individual
+from location.models import Location
 
-from api_dci.permissions import DCIPersonPermissions
+from api_dci.apps import ApiDciConfig
 from api_dci.tasks import BackgroundSearchTask
 
 MASKED = "***************"
-GATE = DCIPersonPermissions.permission_map["GET"]
-UPDATE_GATE = DCIPersonPermissions.permission_map["PUT"]
+# The DCI person read and update rights.
+GATE = ["gql_dci_person_search_perms", "gql_dci_person_update_perms"]
+DISTRICT = "DCIM-D"
 DETAIL_URL = "/api/api_dci/registry/person/openimis:individual:{}"
 SYNC_URL = "/api/api_dci/registry/sync/search"
 UPDATE_URL = "/api/api_dci/registry/person/openimis:individual:{}/update"
@@ -61,27 +61,31 @@ def update_request(given_name):
     }
 
 
-def grant_gate(user):
-    """Gives ``user`` the Django permissions the Person read and update endpoints check."""
-    for name in (GATE, UPDATE_GATE):
-        permission, _ = Permission.objects.get_or_create(
-            codename=name.split(".")[1],
-            content_type=ContentType.objects.get_for_model(Individual),
-            defaults={"name": name},
-        )
-        user.user_permissions.add(permission)
-    return type(user).objects.get(pk=user.pk)
+def district_location():
+    """A village under the district DISTRICT, the location of the masked person."""
+    region = Location.objects.create(code="DCIM-R", name="DCIM-R", type="R", validity_from="2019-06-01",
+                                     audit_user_id=-1)
+    district = Location.objects.create(code=DISTRICT, name=DISTRICT, type="D", parent=region,
+                                       validity_from="2019-06-01", audit_user_id=-1)
+    municipality = Location.objects.create(code="DCIM-W", name="DCIM-W", type="W", parent=district,
+                                           validity_from="2019-06-01", audit_user_id=-1)
+    village = Location.objects.create(code="DCIM-V", name="DCIM-V", type="V", parent=municipality,
+                                      validity_from="2019-06-01", audit_user_id=-1)
+    caches["location"].clear()
+    caches["default"].clear()
+    return village
 
 
 class PersonMaskingTest(APITestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.masked_reader = grant_gate(create_right_only_user("dci_mask_masked", []))
-        cls.unmasked_reader = grant_gate(
-            create_right_only_user("dci_mask_unmasked", ["gql_query_enable_viewing_masked_data_perms"]))
-        cls.role_reader = create_right_only_user("dci_mask_role", ["gql_individual_search_perms"])
+        village = district_location()
+        cls.masked_reader = create_right_only_user("dci_mask_masked", GATE, [DISTRICT])
+        cls.unmasked_reader = create_right_only_user(
+            "dci_mask_unmasked", GATE + ["gql_query_enable_viewing_masked_data_perms"], [DISTRICT])
+        cls.role_reader = create_right_only_user("dci_mask_role", ["gql_individual_search_perms"], [DISTRICT])
         cls.person = Individual(
-            first_name="Maskfirst", last_name="Clearlast", dob="1990-01-15",
+            first_name="Maskfirst", last_name="Clearlast", dob="1990-01-15", location=village,
             json_ext={"phone": "+25779000001", "email": "clear@example.org"},
         )
         cls.person.save(username=cls.masked_reader.username)
@@ -113,14 +117,13 @@ class PersonMaskingTest(APITestCase):
         self.assertEqual(person["birth_date"], "1990-01-15T00:00:00Z")
         self.assertEqual(person["phone_number"], ["+25779000001"])
 
-    def test_the_gate_is_a_django_permission_that_the_person_search_right_does_not_grant(self):
-        self.assertIsNone(right_id_for_permission_name(GATE))
+    def test_the_person_search_right_of_individual_does_not_pass_the_gate(self):
         self.assertTrue(self.role_reader.has_perms(IndividualConfig.gql_individual_search_perms))
         response = self.client_for(self.role_reader).get(DETAIL_URL.format(self.person.id))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_the_masked_reader_passes_the_gate_without_the_masked_data_right(self):
-        self.assertTrue(self.masked_reader.has_perm(GATE))
+        self.assertTrue(self.masked_reader.has_perms(ApiDciConfig.gql_dci_person_search_perms))
         self.assertFalse(may_see_masked(self.masked_reader))
         self.assertTrue(may_see_masked(self.unmasked_reader))
 
@@ -170,8 +173,8 @@ class PersonMaskingTest(APITestCase):
     def test_async_search_callback_is_clear_with_the_masked_data_right(self):
         self.assert_clear(self._async_records(self.unmasked_reader)[0])
 
-    def test_async_search_callback_is_masked_for_a_task_without_a_user(self):
-        self.assert_masked(self._async_records(None)[0])
+    def test_async_search_callback_holds_no_person_for_a_task_without_a_user(self):
+        self.assertEqual(self._async_records(None), [])
 
     def test_an_update_sending_the_mask_back_is_refused_and_writes_nothing(self):
         response = self.client_for(self.masked_reader).put(

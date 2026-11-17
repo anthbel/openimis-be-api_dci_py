@@ -30,7 +30,7 @@ from api_dci.views.person_viewset import async_search, sync_search
 
 FIXTURES = "api_dci.tests.record_provider_fixtures"
 PROVIDER_PATH = f"{FIXTURES}.FakeHouseholdProvider"
-PERSON_QUERY_RIGHT = "individual.gql_query_individuals_perms"
+PERSON_QUERY_RIGHT = "195701"
 SYNC_URL = "/api/api_dci/registry/sync/search"
 ASYNC_URL = "/api/api_dci/registry/async/search"
 _ABSENT = object()

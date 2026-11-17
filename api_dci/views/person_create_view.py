@@ -19,6 +19,7 @@ from ..serializers import (
 )
 from ..converters.person_converter import PersonConverter
 from ..masking import check_person_sent_back
+from ..person_search import PersonLocationRefused, creation_location, visible_persons
 from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
 from ..utils.log_safety import error_fields, error_text, log_error
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 
     **Response:** Returns person_id in format `openimis:individual:{uuid}`
 
-    **Permissions:** Requires `individual.gql_mutation_create_individuals_perms`
+    **Permissions:** Requires the DCI person create right (195702)
     ''',
     request=DCIPersonCreateRequestSerializer,
     responses={
@@ -118,6 +119,19 @@ def person_create(request):
         # Get registry type from config
         registry_type = get_registry_type()
 
+        # The person is created at its address location, which must be one of the caller's.
+        try:
+            location = creation_location(request.user, person_data)
+        except PersonLocationRefused as e:
+            return Response(
+                DCIPersonResponseSerializer.create_error_response(
+                    request_data=request.data,
+                    error_message=str(e),
+                    operation="create"
+                ),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Get user for audit trail
         user = request.user
         User = get_user_model()
@@ -139,7 +153,8 @@ def person_create(request):
             spdci_person=person_data,
             registry_type=registry_type,
             user=user,
-            metadata=metadata
+            metadata=metadata,
+            location=location,
         )
 
         # Generate person_id
@@ -190,7 +205,7 @@ def person_create(request):
 
     **Registry-specific data:** Merged into existing json_ext
 
-    **Permissions:** Requires `individual.change_individual`
+    **Permissions:** Requires the DCI person update right (195703)
     ''',
     request=DCIPersonUpdateRequestSerializer,
     responses={
@@ -277,7 +292,8 @@ def person_update(request, person_id):
 
         # Get Individual by UUID
         try:
-            individual = Individual.objects.get(uuid=uuid, is_deleted=False)
+            # A person outside the caller's locations is not found.
+            individual = visible_persons(request.user).get(uuid=uuid)
         except Individual.DoesNotExist:
             logger.error(f"[DCI Person Update] Individual not found: {person_id}")
             return Response(

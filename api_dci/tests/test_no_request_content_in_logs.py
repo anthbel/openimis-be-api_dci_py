@@ -188,7 +188,8 @@ class PersonViewsLogNoRequestContentTestCase(LogCaptureMixin, LogInMixin, APITes
     def test_person_update_failures_whose_message_repeats_the_identifier(self):
         from individual.models import Individual
 
-        individual = Individual(first_name="Aline", last_name="Log", dob="1990-01-15", json_ext={})
+        individual = Individual(first_name="Aline", last_name="Log", dob="1990-01-15", json_ext={},
+                                location=self.dci_village())
         individual.save(user=self.test_user)
         person_id = f"openimis:individual:{individual.uuid}"
         for error_class, expected_status in FAILURES:

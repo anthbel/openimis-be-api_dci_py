@@ -15,8 +15,8 @@ from api_dci.permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from api_dci.views.person_create_view import person_create
 from api_dci.views.txn_status_viewset import txn_status
 
-QUERY_RIGHT = "individual.gql_query_individuals_perms"
-CREATE_RIGHT = "individual.gql_mutation_create_individuals_perms"
+QUERY_RIGHT = "195701"
+CREATE_RIGHT = "195702"
 
 
 def _txn_status_payload():

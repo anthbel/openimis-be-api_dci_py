@@ -292,38 +292,25 @@ class PersonConverter:
             except (ValueError, AttributeError):
                 pass
 
-        # Extract sex and store in json_ext
+        # Sex, phone and email are json_ext keys of the person (Individual has no such columns)
         json_ext = {}
         if "sex" in dci_person:
-            # Map SPDCI sex to OpenIMIS gender code
-            sex_map = {
-                'male': 'M',
-                'female': 'F',
-                'others': 'O',
-                'unknown': 'U'
-            }
             json_ext["sex"] = dci_person["sex"]
-            data["gender_code"] = sex_map.get(dci_person["sex"], 'U')
 
-        # Extract phone_number
+        # The first phone_number and email only: the person mask masks the phone and email keys, not a list
         if "phone_number" in dci_person:
             phones = dci_person["phone_number"]
             if isinstance(phones, list) and phones:
-                data["phone"] = phones[0]  # Take first phone
-                if len(phones) > 1:
-                    json_ext["phone_numbers"] = phones
+                json_ext["phone"] = phones[0]
             elif phones:
-                data["phone"] = str(phones)
+                json_ext["phone"] = str(phones)
 
-        # Extract email
         if "email" in dci_person:
             emails = dci_person["email"]
             if isinstance(emails, list) and emails:
-                data["email"] = emails[0]  # Take first email
-                if len(emails) > 1:
-                    json_ext["emails"] = emails
+                json_ext["email"] = emails[0]
             elif emails:
-                data["email"] = str(emails)
+                json_ext["email"] = str(emails)
 
         # Store address in json_ext (Individual model doesn't have address field)
         if "address" in dci_person:
@@ -374,10 +361,11 @@ class PersonConverter:
         spdci_person: Dict,
         registry_type: str,
         user,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        location=None,
     ) -> Tuple[object, Dict]:
         """
-        Create Individual from SPDCI Person data.
+        Create Individual from SPDCI Person data, at ``location``.
 
         Args:
             spdci_person: SPDCI Person dict
@@ -410,28 +398,13 @@ class PersonConverter:
             metadata=metadata or {}
         )
 
-        # Merge json_ext into base_data
-        base_data['json_ext'] = json_ext
+        # The person's own json_ext keys (sex, phone, email, address) and the registry structure
+        base_data['json_ext'] = {**base_data.get('json_ext', {}), **json_ext}
+        base_data['location'] = location
 
-        # Handle gender lookup (Individual expects Gender FK, not gender_code string)
-        if 'gender_code' in base_data:
-            try:
-                from core.models import Gender
-                gender = Gender.objects.filter(code=base_data['gender_code']).first()
-                if gender:
-                    base_data['gender'] = gender
-                del base_data['gender_code']
-            except ImportError:
-                # If Gender model not available, store in json_ext
-                if 'gender_code' in base_data:
-                    del base_data['gender_code']
-
-        # Set audit fields
-        base_data['user_created'] = user
-        base_data['user_updated'] = user
-
-        # Create Individual
-        individual = Individual.objects.create(**base_data)
+        # Create Individual; the save records ``user`` as its creator and updater.
+        individual = Individual(**base_data)
+        individual.save(user=user)
 
         return individual, json_ext
 
@@ -469,20 +442,10 @@ class PersonConverter:
         for field, value in base_data.items():
             if field == 'json_ext':
                 continue  # Handle separately
-            if field == 'gender_code':
-                # Handle gender lookup
-                try:
-                    from core.models import Gender
-                    gender = Gender.objects.filter(code=value).first()
-                    if gender:
-                        individual.gender = gender
-                except ImportError:
-                    pass
-            else:
-                setattr(individual, field, value)
+            setattr(individual, field, value)
 
-        # Update json_ext with registry-specific data
-        current_json_ext = individual.json_ext or {}
+        # Update json_ext with the person's own keys, then with registry-specific data
+        current_json_ext = {**(individual.json_ext or {}), **base_data.get('json_ext', {})}
         updated_json_ext = JsonExtManager.update_json_ext(
             current_json_ext=current_json_ext,
             spdci_person=spdci_person,

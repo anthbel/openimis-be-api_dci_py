@@ -272,14 +272,15 @@ pip install openimis-be-individual
 
 ### "Permission denied"
 
-**Cause:** The test user doesn't have the required permissions.
+**Cause:** The test user doesn't hold the DCI person rights, or the person is outside the
+user's locations.
 
 **Solution:**
 ```python
-# In setUp(), verify that the user has the correct permissions
-from django.contrib.auth.models import Permission
-permission = Permission.objects.get(codename='view_individual')
-self.test_user.user_permissions.add(permission)
+# The user of LogInMixin.get_or_create_user_api() holds the DCI person rights through a role.
+# Any other user needs a role carrying them, and districts covering the persons it reads:
+from core.test_helpers import create_right_only_user
+user = create_right_only_user("reader", ["gql_dci_person_search_perms"], ["R1D1"])
 ```
 
 ### Slow tests

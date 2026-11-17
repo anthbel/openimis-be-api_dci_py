@@ -27,97 +27,51 @@ class LogInMixin:
         """
         Get or create a test user for API authentication.
 
+        The user holds the DCI person rights through a role, in the district of ``dci_village``.
+
         Returns:
             User: Test user instance
         """
         from django.contrib.auth import get_user_model
-        from core.models import InteractiveUser
 
         User = get_user_model()
 
-        try:
-            user = User.objects.get(username=self._test_username)
-        except User.DoesNotExist:
-            # Create user
-            user = User.objects.create_user(
-                username=self._test_username,
-                password=self._test_password
+        user = User.objects.filter(username=self._test_username).first()
+        if user is None:
+            from django.core.cache import caches
+            from core.test_helpers import create_test_interactive_user
+            from location.test_helpers import assign_user_districts
+
+            user = create_test_interactive_user(
+                username=self._test_username, password=self._test_password,
+                roles=[self._dci_role().id],
             )
-
-            # Create associated InteractiveUser if needed
-            try:
-                InteractiveUser.objects.create(
-                    login_name=self._test_username,
-                    user=user
-                )
-            except Exception:
-                pass  # InteractiveUser might not be required
-
-        # Grant required DCI API permissions
-        self._grant_dci_permissions(user)
-
+            assign_user_districts(user, [self.dci_village().parent.parent.code])
+            caches["location"].clear()
+            caches["default"].clear()
         return user
 
-    def _grant_dci_permissions(self, user):
-        """
-        Grant required permissions for DCI API testing.
+    @staticmethod
+    def dci_village():
+        """A village in the district of the test user, for the persons it reads, writes and creates."""
+        from location.test_helpers import create_test_village
 
-        Args:
-            user: User instance to grant permissions to
-        """
-        # Check if user is valid
-        if not user or not hasattr(user, 'user_permissions'):
-            return
+        return create_test_village({"name": "DCI test village", "code": "DCITV"})
 
-        try:
-            from django.contrib.auth.models import Permission
-            from django.contrib.contenttypes.models import ContentType
+    @staticmethod
+    def _dci_role():
+        """The role holding the DCI person rights."""
+        from core.test_helpers import _sync_role_rights, create_test_role
+        from api_dci.apps import ApiDciConfig
 
-            # Try to get Individual content type, fall back to a generic one
-            content_type = None
-            try:
-                from individual.models import Individual
-                content_type = ContentType.objects.get_for_model(Individual)
-            except (ImportError, Exception):
-                pass
-
-            if content_type is None:
-                # Use ContentType for the auth User model as a generic fallback
-                from django.contrib.auth import get_user_model
-                content_type = ContentType.objects.get_for_model(get_user_model())
-
-            # Required permissions for DCI API
-            permission_codenames = [
-                'gql_query_individuals_perms',
-                'gql_mutation_create_individuals_perms',
-                'gql_mutation_update_individuals_perms',
-                'gql_mutation_delete_individuals_perms',
-            ]
-
-            for codename in permission_codenames:
-                # Try to get or create permission
-                permission, _ = Permission.objects.get_or_create(
-                    codename=codename,
-                    defaults={
-                        'name': f'Can {codename.replace("gql_", "").replace("_perms", "")}',
-                        'content_type': content_type
-                    }
-                )
-
-                # Check if user already has this permission
-                if not user.user_permissions.filter(id=permission.id).exists():
-                    user.user_permissions.add(permission)
-
-            # Django caches permissions on the user object after the first has_perm call.
-            # Clear the cache so newly added permissions take effect immediately.
-            for cache_attr in ('_perm_cache', '_user_perm_cache', '_dci_perm_cache'):
-                if hasattr(user, cache_attr):
-                    delattr(user, cache_attr)
-
-        except Exception:
-            # If permission setup fails, silently skip
-            # (Tests will fail with 403 if permissions are really needed)
-            pass
+        role = create_test_role(name="DCI API test client")
+        _sync_role_rights(role, [
+            int(right)
+            for rights in (ApiDciConfig.gql_dci_person_search_perms, ApiDciConfig.gql_dci_person_create_perms,
+                           ApiDciConfig.gql_dci_person_update_perms)
+            for right in rights
+        ])
+        return role
 
     def login(self):
         """

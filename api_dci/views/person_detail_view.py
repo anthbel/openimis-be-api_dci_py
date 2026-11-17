@@ -13,6 +13,7 @@ from drf_spectacular.types import OpenApiTypes
 
 from ..converters.person_converter import PersonConverter
 from ..masking import mask_person
+from ..person_search import visible_persons
 from ..permissions import DCIPersonPermissions
 from ..throttling import DCISearchRateThrottle
 from ..utils.log_safety import error_text, log_error
@@ -104,9 +105,9 @@ def person_detail(request, person_id):
         # Extract UUID from the ID
         uuid_str = person_id.replace('openimis:individual:', '')
 
-        # Query the Individual
+        # A person outside the caller's locations is not found.
         try:
-            individual = Individual.objects.get(uuid=uuid_str, is_deleted=False)
+            individual = visible_persons(request.user).get(uuid=uuid_str)
         except Individual.DoesNotExist:
             return Response(
                 {'error': 'Person not found'},
