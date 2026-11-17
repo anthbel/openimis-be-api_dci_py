@@ -149,6 +149,8 @@ def sync_search(request):
             for individual in queryset[:100]  # Limit to 100 results
         ]
 
+    except InvalidSearchRequest as e:
+        return _error_response(str(e), status.HTTP_400_BAD_REQUEST)
     except PermissionDenied as e:
         return _error_response(str(e), status.HTTP_403_FORBIDDEN)
     except ImportError:

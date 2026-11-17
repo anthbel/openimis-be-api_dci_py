@@ -29,6 +29,7 @@ MASKED = "***************"
 
 DETAIL_URL = "/api/api_dci/registry/person/openimis:individual:{}"
 CREATE_URL = "/api/api_dci/registry/person"
+UPDATE_URL = "/api/api_dci/registry/person/openimis:individual:{}/update"
 SYNC_URL = "/api/api_dci/registry/sync/search"
 ASYNC_URL = "/api/api_dci/registry/async/search"
 
@@ -111,13 +112,15 @@ class DCIPersonAccessTest(APITestCase):
         cls.unmasked_reader = role_user("dci_access_unmasked", [PERSON_QUERY, MASKED_DATA], ["DCIA-D"])
         cls.individual_reader = role_user("dci_access_individual", [INDIVIDUAL_QUERY], ["DCIA-D"])
         cls.creator = role_user("dci_access_creator", [PERSON_CREATE], ["DCIA-D"])
+        cls.updater = role_user("dci_access_updater", [PERSON_UPDATE], ["DCIA-D"])
         cls.near = cls.person("Nearfirst", "Accessnear", cls.village)
         cls.far = cls.person("Farfirst", "Accessfar", cls.other_village)
 
     @classmethod
     def person(cls, first_name, last_name, location):
         person = Individual(first_name=first_name, last_name=last_name, dob="1990-01-15", location=location,
-                            json_ext={"phone": "+25779000001"})
+                            json_ext={"phone": "+25779000001", "email": f"{last_name.lower()}@example.org",
+                                      "sex": "female"})
         person.save(user=cls.admin)
         return person
 
@@ -204,8 +207,7 @@ class DCIPersonAccessTest(APITestCase):
     def test_a_filter_on_a_masked_field_is_refused_without_the_masked_data_right(self):
         for payload in (by_fields(firstName="Nearfirst"), by_fields(dob="1990-01-15"),
                         by_predicate("first_name", "Nearfirst"), by_predicate("dob", "1990-01-01", "gt"),
-                        by_predicate("json_ext__phone", "+25779000001"),
-                        by_predicate("groupindividuals__individual__first_name", "Nearfirst")):
+                        by_predicate("phone", "+25779000001"), by_fields(phone="+2577900")):
             with self.subTest(payload=payload["message"]["search_request"][0]["search_criteria"]):
                 response = self.search(self.reader, payload)
                 self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.content)
@@ -247,3 +249,51 @@ class DCIPersonAccessTest(APITestCase):
         self.assertEqual(person.user_created, self.creator)
         self.assertEqual(person.user_updated, self.creator)
         self.assertEqual(str(person.dob), "1991-02-03")
+
+    # -- the DCI search attributes ---------------------------------------------------------------------------
+
+    def test_a_predicate_outside_the_dci_search_attributes_is_refused_to_every_reader(self):
+        for attribute, value in (("user_updated__username", "dci_access_admin"),
+                                 ("groupindividuals__individual__first_name", "Nearfirst"),
+                                 ("json_ext__phone", "+25779000001"), ("location__code", "DCIA-V"),
+                                 ("first_name__regex", "^N"), ("age", "30")):
+            for user in (self.reader, self.unmasked_reader):
+                with self.subTest(attribute=attribute, user=user.username):
+                    response = self.search(user, by_predicate(attribute, value))
+                    self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+                    self.assertIn(attribute, response.json()["header"]["message"])
+                    self.assertNotIn("Accessnear", response.content.decode())
+
+    def test_phone_email_and_gender_filters_read_the_person_json_ext_keys(self):
+        for user, payload, expected in (
+                (self.unmasked_reader, by_fields(phone="+2577900"), ["Accessnear"]),
+                (self.unmasked_reader, by_predicate("phone", "+25779000001"), ["Accessnear"]),
+                (self.reader, by_fields(email="accessnear@"), ["Accessnear"]),
+                (self.reader, by_predicate("email", "accessnear@example.org"), ["Accessnear"]),
+                (self.reader, by_fields(gender="Female"), ["Accessnear"]),
+                (self.reader, by_fields(gender="Male"), []),
+                (self.reader, by_predicate("gender", "female"), ["Accessnear"])):
+            with self.subTest(user=user.username, criteria=payload["message"]["search_request"][0]["search_criteria"]):
+                response = self.search(user, payload)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+                self.assertEqual(family_names(response.json()), expected)
+
+    # -- update ----------------------------------------------------------------------------------------------
+
+    def update(self, person):
+        payload = {
+            "signature": "",
+            "header": header("update"),
+            "message": {"transaction_id": "txn-access-update", "person": {"name": {"family_name": "Renamed"}}},
+        }
+        return self.client_for(self.updater).put(UPDATE_URL.format(person.id), data=payload, format="json")
+
+    def test_update_of_a_person_outside_the_callers_locations_is_not_found(self):
+        response = self.update(self.far)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, response.content)
+        self.assertEqual(Individual.objects.get(id=self.far.id).last_name, "Accessfar")
+
+    def test_update_of_a_person_in_the_callers_locations_is_written(self):
+        response = self.update(self.near)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(Individual.objects.get(id=self.near.id).last_name, "Renamed")

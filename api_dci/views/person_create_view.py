@@ -19,6 +19,7 @@ from ..serializers import (
 )
 from ..converters.person_converter import PersonConverter
 from ..masking import check_person_sent_back
+from ..person_search import visible_persons
 from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
 from ..utils.log_safety import error_fields, error_text, log_error
@@ -277,7 +278,8 @@ def person_update(request, person_id):
 
         # Get Individual by UUID
         try:
-            individual = Individual.objects.get(uuid=uuid, is_deleted=False)
+            # A person outside the caller's locations is not found.
+            individual = visible_persons(request.user).get(uuid=uuid)
         except Individual.DoesNotExist:
             logger.error(f"[DCI Person Update] Individual not found: {person_id}")
             return Response(

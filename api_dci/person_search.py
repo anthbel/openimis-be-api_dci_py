@@ -7,6 +7,21 @@ values. The querysets are lazy, so building one checks the filters without readi
 """
 from django.contrib.auth.models import AnonymousUser
 
+from .record_providers import InvalidSearchRequest
+
+# The predicate attributes a DCI search may name, each with the Individual field or json_ext key it reads. A
+# caller's attribute never reaches the ORM as a lookup of its own: one outside this map is refused.
+PREDICATE_ATTRIBUTES = {
+    'first_name': 'first_name',
+    'firstName': 'first_name',
+    'last_name': 'last_name',
+    'lastName': 'last_name',
+    'dob': 'dob',
+    'gender': 'json_ext__sex',
+    'phone': 'json_ext__phone',
+    'email': 'json_ext__email',
+}
+
 
 def visible_persons(user):
     """The non-deleted persons ``user`` may read; none without a user."""
@@ -72,27 +87,28 @@ def _field_conditions(filters):
         conditions.append(('dob', filters['dob']))
 
     if 'gender' in filters:
-        # Map DCI gender to OpenIMIS gender code
-        gender_map = {
-            'Male': 'M',
-            'Female': 'F',
-            'Other': 'O'
+        # Map DCI gender to the SPDCI sex the person's json_ext holds
+        sex_map = {
+            'Male': 'male',
+            'Female': 'female',
+            'Other': 'others'
         }
-        gender_code = gender_map.get(filters['gender'])
-        if gender_code:
-            conditions.append(('gender__code', gender_code))
+        sex = sex_map.get(filters['gender'])
+        if sex:
+            conditions.append(('json_ext__sex', sex))
 
     if 'phone' in filters:
-        conditions.append(('phone__icontains', filters['phone']))
+        conditions.append(('json_ext__phone__icontains', filters['phone']))
 
     if 'email' in filters:
-        conditions.append(('email__icontains', filters['email']))
+        conditions.append(('json_ext__email__icontains', filters['email']))
 
     return conditions
 
 
 def _predicate_conditions(expression):
-    """The (lookup, value) conditions of a single predicate expression"""
+    """The (lookup, value) conditions of a single predicate expression; InvalidSearchRequest when it names an
+    attribute outside PREDICATE_ATTRIBUTES."""
     attribute_name = expression.get('attribute_name', '')
     operator = expression.get('operator', 'eq')
     attribute_value = expression.get('attribute_value', '')
@@ -102,22 +118,9 @@ def _predicate_conditions(expression):
     if not attribute_name or not attribute_value:
         return []
 
-    # Map attribute names to Individual model fields
-    field_mapping = {
-        'age': None,  # Requires calculation
-        'first_name': 'first_name',
-        'last_name': 'last_name',
-        'firstName': 'first_name',
-        'lastName': 'last_name',
-        'dob': 'dob',
-        'gender': 'gender__code',
-        'phone': 'phone',
-        'email': 'email',
-    }
-
-    field = field_mapping.get(attribute_name, attribute_name)
+    field = PREDICATE_ATTRIBUTES.get(attribute_name) if isinstance(attribute_name, str) else None
     if not field:
-        return []
+        raise InvalidSearchRequest(f"unsupported search attribute: {attribute_name}")
 
     # Apply operator
     if operator == 'eq':

@@ -177,6 +177,13 @@ The API supports multiple SPDCI query types through a unified endpoint:
 }
 ```
 
+A predicate `attribute_name` is one of the DCI search attributes, each reading one field of the
+person: `first_name`/`firstName`, `last_name`/`lastName`, `dob`, `gender` (the `sex` key of
+`json_ext`, `male`, `female`, `others` or `unknown`), `phone` and `email` (the `phone` and `email`
+keys of `json_ext`). Any other attribute, a relation path or a lookup suffix included, is refused
+(HTTP 400, naming the attribute) to every caller. The field filters `phone` and `email` match
+part of the `json_ext` key; `gender` takes `Male`, `Female` or `Other`.
+
 3. **Expression Query (SPDCI FR)**
 ```json
 {
@@ -308,9 +315,10 @@ Sync and async search of a record provider type require the provider's right ins
 
 ### Locations
 
-Person detail, sync search and the async search callback read only the persons of the caller's
+Person detail and update, sync search and the async search callback read only the persons of the caller's
 locations (`individual`'s row security, `Individual.get_queryset`): a person outside them is not
-found (HTTP 404) and is left out of a search. An async search run without a user reads no person.
+found (HTTP 404) by detail or update and is left out of a search. An async search run without a
+user reads no person.
 
 A person created through `POST registry/person` is saved with the caller as its creator.
 
