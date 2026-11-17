@@ -17,6 +17,7 @@ from ..serializers import (
     DCISearchResponseSerializer,
 )
 from ..converters.person_converter import PersonConverter
+from ..masking import mask_person
 from ..permissions import DCISearchPermissions
 from ..throttling import DCISearchRateThrottle
 from ..config import get_registry_type
@@ -308,7 +309,7 @@ def sync_search(request):
 
         # Convert to DCI Person format
         persons = [
-            PersonConverter.individual_to_dci_person(individual)
+            PersonConverter.individual_to_dci_person(mask_person(request.user, individual))
             for individual in queryset[:100]  # Limit to 100 results
         ]
 

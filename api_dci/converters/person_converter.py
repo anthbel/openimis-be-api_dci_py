@@ -66,9 +66,10 @@ class PersonConverter:
             person["name"] = name_obj
 
         # birth_date (0...1 DF.COM.STRING.01 date_time)
+        # A date becomes an ISO 8601 date_time; a masked dob is the mask's string and is given as it is.
         if individual.dob:
-            # Convert date to ISO 8601 datetime format
-            person["birth_date"] = f"{individual.dob.isoformat()}T00:00:00Z"
+            dob = individual.dob
+            person["birth_date"] = f"{dob.isoformat()}T00:00:00Z" if hasattr(dob, "isoformat") else dob
 
         # sex (0...1 CD.COM.03 sex) - enumeration: male, female, others, unknown
         sex_value = PersonConverter._extract_sex(individual)

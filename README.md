@@ -302,6 +302,18 @@ The module uses OpenIMIS Individual permissions:
 Sync and async search of a record provider type require the provider's right instead
 (see Record Providers).
 
+These names are Django permissions (`app_label.codename`): no openIMIS right maps to them,
+so a role holding the Individual search right (159001) does not open the Person endpoints.
+
+### Masked person fields
+
+`GET registry/person/{id}`, sync search and the async search callback give each Person
+through `individual`'s person mask, with the fields other modules register, unless the
+caller holds the masked-data right (core `gql_query_enable_viewing_masked_data_perms`,
+900101); an async search run without a user gets the mask. A masked field gives the string
+mask, a masked `dob` included as `birth_date`. `PUT registry/person/{id}/update` refuses
+(HTTP 400) a field given the string mask in place of a masked value it does not hold.
+
 ## Rate Limit
 
 Sync search, async search and `GET registry/person/{id}` share one request budget per

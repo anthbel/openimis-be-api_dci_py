@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 import logging
 
 from ..serializers import (
@@ -17,6 +18,7 @@ from ..serializers import (
     DCIPersonResponseSerializer,
 )
 from ..converters.person_converter import PersonConverter
+from ..masking import check_person_sent_back
 from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
 from ..utils.log_safety import error_fields, exception_trace
@@ -290,6 +292,20 @@ def person_update(request, person_id):
         # Extract person data from message
         message_data = validated_data['message']
         person_data = message_data.get('person', {})
+
+        # A person read through the DCI API carries the person mask; the mask sent back is refused.
+        try:
+            check_person_sent_back(
+                request.user, individual, PersonConverter.dci_person_to_individual_data(person_data))
+        except ValidationError as e:
+            return Response(
+                DCIPersonResponseSerializer.create_error_response(
+                    request_data=request.data,
+                    error_message=f"Invalid data: {' '.join(e.messages)}",
+                    operation="update"
+                ),
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Get registry type from config
         registry_type = get_registry_type()

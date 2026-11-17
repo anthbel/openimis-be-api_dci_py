@@ -4,6 +4,7 @@ import logging
 
 from django.db import connection
 
+from .masking import mask_person
 from .record_providers import run_provider_search
 from .utils.log_safety import exception_trace
 
@@ -105,7 +106,7 @@ class BackgroundSearchTask(threading.Thread):
 
             # Convert to DCI Person format
             persons = [
-                PersonConverter.individual_to_dci_person(individual)
+                PersonConverter.individual_to_dci_person(mask_person(self.user, individual))
                 for individual in queryset[:100]
             ]
 

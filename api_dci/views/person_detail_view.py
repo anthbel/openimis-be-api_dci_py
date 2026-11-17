@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
 from ..converters.person_converter import PersonConverter
+from ..masking import mask_person
 from ..permissions import DCIPersonPermissions
 from ..throttling import DCISearchRateThrottle
 
@@ -108,7 +109,7 @@ def person_detail(request, person_id):
             )
 
         # Convert to DCI Person format
-        person_data = PersonConverter.individual_to_dci_person(individual)
+        person_data = PersonConverter.individual_to_dci_person(mask_person(request.user, individual))
 
         return Response(person_data, status=status.HTTP_200_OK)
 
