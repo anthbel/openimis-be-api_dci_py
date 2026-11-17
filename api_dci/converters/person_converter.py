@@ -377,13 +377,17 @@ class PersonConverter:
             tuple: (Individual instance, json_ext dict)
 
         Raises:
-            ValueError: If required data is missing
+            ValueError: If required data is missing, the location included
             ImportError: If Individual module not available
         """
         try:
             from individual.models import Individual
         except ImportError:
             raise ImportError("Individual module not available")
+
+        # Row security shows a person without a location to every user.
+        if location is None:
+            raise ValueError("the person needs a location")
 
         # Import JsonExtManager here to avoid circular imports
         from ..utils.json_ext_manager import JsonExtManager

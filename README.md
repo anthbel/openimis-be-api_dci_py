@@ -327,7 +327,23 @@ reads and writes every person. An async search run without a user reads no perso
 `location_code`: exactly one valid location, one of the caller's locations (any location for a
 superuser); otherwise it is refused (HTTP 400). The person is saved with the caller as its
 creator. `sex`, the first `phone_number` and the first `email` are stored under the `json_ext`
-keys `sex`, `phone` and `email`; further numbers and emails are not kept.
+keys `sex`, `phone` and `email`; further numbers and emails are not kept. `PersonConverter`
+creates no person without a location.
+
+Core row security shows a person without a location to every user. The management command
+`clean_dci_persons` reports the persons the DCI API wrote (`json_ext.registry_metadata`) that need
+one of two corrections, and makes them with `--apply --username <user>` (the user the changes are
+saved as):
+
+- a person without a location is placed at the one address `location_code` its `json_ext`
+  names (`address`, or `spdci_data.address`), when that location is valid and one its creator may
+  write; otherwise it is reported `not placed`, with the reason, and stays without a location;
+- a `json_ext.spdci_data` holding more than the registry-specific data of its registry type (a
+  copy of the request person) is cut to that data; `sex`, the first `phone_number` and `email`, and
+  `address` of the copy go to their `json_ext` keys unless the person already has them.
+
+It names persons by uuid only. Without `--apply` it changes nothing. The individual history keeps
+the earlier versions of the rows it changes.
 
 ### Masked person fields
 
