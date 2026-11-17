@@ -27,6 +27,7 @@ from api_dci.tests.record_provider_fixtures import (
     FakeHouseholdProvider,
 )
 from api_dci.views.person_viewset import async_search, sync_search
+from api_dci.tests.utils import allow_callback_host
 
 FIXTURES = "api_dci.tests.record_provider_fixtures"
 PROVIDER_PATH = f"{FIXTURES}.FakeHouseholdProvider"
@@ -331,6 +332,7 @@ class ProviderAsyncSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
 
     def setUp(self):
         super().setUp()
+        allow_callback_host(self)
         register_record_provider("Household", PROVIDER_PATH)
         self.factory = APIRequestFactory()
         self.consumer = user_holding(PROVIDER_RIGHT)
@@ -415,6 +417,10 @@ class PersonSearchThroughSearchGateTestCase(ProviderRegistryIsolation, SimpleTes
 class ProviderBackgroundSearchTestCase(ProviderRegistryIsolation, SimpleTestCase):
     """The background task posts the provider page and never queries Individual."""
 
+    def setUp(self):
+        super().setUp()
+        allow_callback_host(self)
+
     def test_provider_task_posts_the_provider_page(self):
         from api_dci.tasks import BackgroundSearchTask
 
@@ -497,6 +503,10 @@ class ProviderErrorIsNotEchoedTestCase(ProviderRegistryIsolation, SimpleTestCase
 
 class CallbackRedirectTestCase(SimpleTestCase):
     """The async callback is posted to the sender's URL only, never to a redirect target."""
+
+    def setUp(self):
+        super().setUp()
+        allow_callback_host(self)
 
     def test_callback_does_not_follow_redirects(self):
         from api_dci.tasks import BackgroundSearchTask

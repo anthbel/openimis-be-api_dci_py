@@ -14,6 +14,7 @@ from location.models import Location
 
 from api_dci.apps import ApiDciConfig
 from api_dci.tasks import BackgroundSearchTask
+from api_dci.tests.utils import allow_callback_host
 
 MASKED = "***************"
 # The DCI person read and update rights.
@@ -92,6 +93,7 @@ class PersonMaskingTest(APITestCase):
 
     def setUp(self):
         super().setUp()
+        allow_callback_host(self)
         patcher = mock.patch.dict(IndividualMask._sources, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)

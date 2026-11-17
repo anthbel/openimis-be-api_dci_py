@@ -17,6 +17,7 @@ from api_dci.record_providers import register_record_provider
 from api_dci.tests.mixin import LogInMixin
 from api_dci.tests.record_provider_fixtures import PROVIDER_RIGHT
 from api_dci.views.person_viewset import async_search, sync_search
+from api_dci.tests.utils import allow_callback_host
 
 NATIONAL_ID = "NID-4471-0098-2231"
 FAMILY_NAME = "Ndayikengurukiye"
@@ -119,6 +120,7 @@ class PersonViewsLogNoRequestContentTestCase(LogCaptureMixin, LogInMixin, APITes
 
     def setUp(self):
         super().setUp()
+        allow_callback_host(self)
         self.test_user = self.get_or_create_user_api()
         self.login()
 
@@ -293,6 +295,7 @@ class ProviderSearchLogsNoRequestContentTestCase(LogCaptureMixin, SimpleTestCase
 
     def setUp(self):
         super().setUp()
+        allow_callback_host(self)
         patcher = mock.patch.dict(record_providers._providers, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)

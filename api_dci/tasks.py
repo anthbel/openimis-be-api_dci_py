@@ -4,6 +4,7 @@ import logging
 
 from django.db import connection
 
+from .callback_hosts import callback_allowed
 from .masking import mask_person
 from .person_search import async_person_queryset
 from .record_providers import run_provider_search
@@ -42,8 +43,9 @@ class BackgroundSearchTask(threading.Thread):
             transaction_id = self.request_data.get('message', {}).get('transaction_id')
             sender_uri = self.request_data.get('header', {}).get('sender_uri')
 
-            if not sender_uri:
-                logger.error("DCI Async Search failed: No sender_uri provided for callback.")
+            if not callback_allowed(sender_uri):
+                logger.error("DCI Async Search for transaction %s refused: its sender_uri is not an https URL "
+                             "to an allowed callback host.", transaction_id)
                 return
 
             search_request = self.search_requests[0]
@@ -91,6 +93,12 @@ class BackgroundSearchTask(threading.Thread):
 
     @staticmethod
     def _post_callback(sender_uri, response_data):
+        """Posts ``response_data`` to ``sender_uri`` once checked again, since the allowed callback hosts may have
+        changed since the search was queued."""
+        if not callback_allowed(sender_uri):
+            logger.error("DCI Async Search callback not posted: its sender_uri is not an https URL to an allowed "
+                         "callback host.")
+            return
         requests.post(
             sender_uri,
             json=response_data,

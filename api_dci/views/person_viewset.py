@@ -4,7 +4,6 @@ DCI Person ViewSet
 REST API views for DCI Person sync/search operations.
 """
 import logging
-from urllib.parse import urlsplit
 
 from django.core.exceptions import PermissionDenied
 from rest_framework import status
@@ -12,6 +11,7 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 
+from ..callback_hosts import callback_allowed
 from ..serializers import (
     DCISearchRequestSerializer,
     DCISearchResponseSerializer,
@@ -235,14 +235,15 @@ def async_search(request):
         if not search_requests:
             raise ValueError("No search_request provided")
 
+        # The raw value is checked: the background task posts to it as received.
+        if not callback_allowed(request.data.get('header', {}).get('sender_uri')):
+            return _error_response(
+                "header.sender_uri must be an https:// URL to an allowed callback host",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
         provider = search_target(request.data)
         if provider is not None:
-            sender_uri = validated_data['header'].get('sender_uri') or ''
-            parts = urlsplit(sender_uri)
-            if parts.scheme.lower() != 'https' or not parts.netloc:
-                return _error_response(
-                    "header.sender_uri must be an https:// URL", status.HTTP_400_BAD_REQUEST
-                )
             try:
                 provider_search_args(validated_data, search_requests[0])
             except InvalidSearchRequest as e:
