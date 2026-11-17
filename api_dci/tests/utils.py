@@ -5,6 +5,19 @@ Common utility functions for loading test data and preparing test requests.
 """
 import json
 from pathlib import Path
+from unittest import mock
+
+from api_dci.apps import ApiDciConfig
+
+# The host of the sender_uri the async search tests call back.
+CALLBACK_HOST = "mis.example.org"
+
+
+def allow_callback_host(test_case, host=CALLBACK_HOST):
+    """Lists ``host`` in ``callback_allowed_hosts`` for the duration of ``test_case``."""
+    patcher = mock.patch.object(ApiDciConfig, "callback_allowed_hosts", [host])
+    patcher.start()
+    test_case.addCleanup(patcher.stop)
 
 
 def get_test_data_path():

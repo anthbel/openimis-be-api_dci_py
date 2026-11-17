@@ -31,6 +31,8 @@ configured_perms = RIGHTS.configured
 DEFAULT_CFG = {
     # {reg_record_type: dotted path of a record provider}, see api_dci.record_providers.
     "record_providers": {},
+    # Host names the async search may post its results to (https only, any port); none while empty.
+    "callback_allowed_hosts": [],
 }
 
 
@@ -47,6 +49,7 @@ class ApiDciConfig(AppConfig):
     gql_dci_person_update_perms = RIGHTS.perms("person", "update")
 
     record_providers = {}
+    callback_allowed_hosts = []
 
     def ready(self):
         """

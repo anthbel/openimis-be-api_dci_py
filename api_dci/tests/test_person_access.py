@@ -19,6 +19,7 @@ from location.test_helpers import assign_user_districts
 
 from api_dci.apps import ApiDciConfig
 from api_dci.tasks import BackgroundSearchTask
+from api_dci.tests.utils import allow_callback_host
 
 PERSON_QUERY = "195701"
 PERSON_CREATE = "195702"
@@ -126,6 +127,7 @@ class DCIPersonAccessTest(APITestCase):
 
     def setUp(self):
         super().setUp()
+        allow_callback_host(self)
         clear_location_cache()
         patcher = mock.patch.dict(IndividualMask._sources, clear=True)
         patcher.start()
