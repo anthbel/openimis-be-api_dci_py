@@ -426,12 +426,9 @@ class PersonConverter:
                 if 'gender_code' in base_data:
                     del base_data['gender_code']
 
-        # Set audit fields
-        base_data['user_created'] = user
-        base_data['user_updated'] = user
-
-        # Create Individual
-        individual = Individual.objects.create(**base_data)
+        # Create Individual; the save records ``user`` as its creator and updater.
+        individual = Individual(**base_data)
+        individual.save(user=user)
 
         return individual, json_ext
 

@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
     **Response:** Returns person_id in format `openimis:individual:{uuid}`
 
-    **Permissions:** Requires `individual.gql_mutation_create_individuals_perms`
+    **Permissions:** Requires the DCI person create right (195702)
     ''',
     request=DCIPersonCreateRequestSerializer,
     responses={
@@ -190,7 +190,7 @@ def person_create(request):
 
     **Registry-specific data:** Merged into existing json_ext
 
-    **Permissions:** Requires `individual.change_individual`
+    **Permissions:** Requires the DCI person update right (195703)
     ''',
     request=DCIPersonUpdateRequestSerializer,
     responses={

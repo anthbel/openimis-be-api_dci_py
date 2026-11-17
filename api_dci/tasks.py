@@ -5,6 +5,7 @@ import logging
 from django.db import connection
 
 from .masking import mask_person
+from .person_search import async_person_queryset
 from .record_providers import run_provider_search
 from .utils.log_safety import exception_trace
 
@@ -34,7 +35,6 @@ class BackgroundSearchTask(threading.Thread):
 
     def _search_and_post(self):
         try:
-            from individual.models import Individual
             from .converters.person_converter import PersonConverter
             from .serializers.person_serializer import DCISearchResponseSerializer
 
@@ -65,44 +65,7 @@ class BackgroundSearchTask(threading.Thread):
                 self._post_callback(sender_uri, response_data)
                 return
 
-            query_obj = search_criteria.get('query', {})
-
-            # Navigate DCI expression structure: query -> value -> expression -> query
-            expression_q = query_obj.get('value', {}).get('expression', {}).get('query', {})
-
-            if not expression_q:
-                expression_q = query_obj
-
-            queryset = Individual.objects.filter(is_deleted=False)
-
-            filter_list = expression_q.get('$and', [])
-            if not filter_list and isinstance(expression_q, dict) and '$and' not in expression_q:
-                filter_list = [{k: {"$eq": v}} for k, v in expression_q.items() if k != '@type']
-
-            filters = {}
-            for item in filter_list:
-                if isinstance(item, dict):
-                    for k, v in item.items():
-                        if isinstance(v, dict) and '$eq' in v:
-                            filters[k] = v['$eq']
-                        else:
-                            filters[k] = v
-
-            if 'firstName' in filters:
-                queryset = queryset.filter(first_name__icontains=filters['firstName'])
-            if 'lastName' in filters:
-                queryset = queryset.filter(last_name__icontains=filters['lastName'])
-            if 'dob' in filters:
-                queryset = queryset.filter(dob=filters['dob'])
-            if 'gender' in filters:
-                gender_map = {'Male': 'M', 'Female': 'F', 'Other': 'O'}
-                gender_code = gender_map.get(filters['gender'])
-                if gender_code:
-                    queryset = queryset.filter(gender__code=gender_code)
-            if 'phone' in filters:
-                queryset = queryset.filter(phone__icontains=filters['phone'])
-            if 'email' in filters:
-                queryset = queryset.filter(email__icontains=filters['email'])
+            queryset = async_person_queryset(self.user, search_criteria)
 
             # Convert to DCI Person format
             persons = [
