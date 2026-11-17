@@ -21,7 +21,7 @@ from ..serializers import (
 )
 from ..permissions import DCIPersonPermissions
 from ..models import DCISubscription
-from ..utils.log_safety import error_fields, exception_trace
+from ..utils.log_safety import error_fields, error_text, log_error
 
 logger = logging.getLogger(__name__)
 
@@ -127,23 +127,23 @@ def subscribe(request):
             subscription_codes.append((reference_id, subscription_code))
 
     except ValueError as e:
-        logger.error(f"[DCI Subscribe] Value error: {type(e).__name__}")
+        error_id = log_error(logger, "[DCI Subscribe] Invalid data", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': str(e)
+                    'message': error_text('Invalid data', error_id)
                 }
             },
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Subscribe] Unexpected error: {exception_trace(e)}")
+        error_id = log_error(logger, "[DCI Subscribe] Unexpected error", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': f'Internal server error: {str(e)}'
+                    'message': error_text('Internal server error', error_id)
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -286,34 +286,32 @@ def unsubscribe(request):
                 ))
 
             except Exception as e:
-                logger.error(
-                    f"[DCI Unsubscribe] Error processing a subscription of transaction "
-                    f"{transaction_id}: {exception_trace(e)}"
-                )
+                error_id = log_error(
+                    logger, f"[DCI Unsubscribe] Error processing a subscription of transaction {transaction_id}", e)
                 unsubscribe_results.append((
                     reference_id,
                     False,
-                    f"Error unsubscribing {subscription_id}: {str(e)}"
+                    error_text(f"Error unsubscribing {subscription_id}", error_id)
                 ))
 
     except ValueError as e:
-        logger.error(f"[DCI Unsubscribe] Value error: {type(e).__name__}")
+        error_id = log_error(logger, "[DCI Unsubscribe] Invalid data", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': str(e)
+                    'message': error_text('Invalid data', error_id)
                 }
             },
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Unsubscribe] Unexpected error: {exception_trace(e)}")
+        error_id = log_error(logger, "[DCI Unsubscribe] Unexpected error", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': f'Internal server error: {str(e)}'
+                    'message': error_text('Internal server error', error_id)
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

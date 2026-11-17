@@ -1,4 +1,5 @@
 """The DCI Person responses apply individual's person mask to a caller without the masked-data right."""
+import re
 from unittest import mock
 
 from django.contrib.auth.models import Permission
@@ -179,10 +180,22 @@ class PersonMaskingTest(APITestCase):
         self.assertIn("first_name", response.json()["message"]["error_message"])
         self.assertEqual(Individual.objects.get(id=self.person.id).first_name, "Maskfirst")
 
-    def test_an_update_with_a_new_value_goes_on_for_a_user_without_the_masked_data_right(self):
-        with mock.patch("api_dci.views.person_create_view.PersonConverter.update_individual_from_spdci",
-                        return_value=(self.person, {})) as update:
-            response = self.client_for(self.masked_reader).put(
-                UPDATE_URL.format(self.person.id), data=update_request("Newfirst"), format="json")
+    def test_an_update_with_a_new_value_is_written_by_the_caller(self):
+        response = self.client_for(self.masked_reader).put(
+            UPDATE_URL.format(self.person.id), data=update_request("Newfirst"), format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
-        self.assertEqual(update.call_args.kwargs["spdci_person"], {"name": {"given_name": "Newfirst"}})
+        stored = Individual.objects.get(id=self.person.id)
+        self.assertEqual(stored.first_name, "Newfirst")
+        self.assertEqual(stored.user_updated, self.masked_reader)
+
+    def test_a_failed_update_gives_an_error_id_and_no_exception_text(self):
+        with self.assertLogs("api_dci.views.person_create_view", level="ERROR") as logs:
+            response = self.client_for(self.masked_reader).put(
+                UPDATE_URL.format(self.person.id), data=update_request(None), format="json")
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR, response.content)
+        body = response.content.decode()
+        for leaked in ("1990-01-15", "+25779000001", "Clearlast", "Failing row", "null value"):
+            self.assertNotIn(leaked, body)
+        error_id = re.search(r"error id ([0-9a-f]{32})", response.json()["message"]["error_message"]).group(1)
+        self.assertTrue(any(error_id in line for line in logs.output), logs.output)
+        self.assertFalse(any("1990-01-15" in line or "+25779000001" in line for line in logs.output), logs.output)

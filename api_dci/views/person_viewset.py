@@ -24,7 +24,7 @@ from ..config import get_registry_type
 from ..record_providers import (
     InvalidSearchRequest, provider_search_args, run_provider_search, search_target,
 )
-from ..utils.log_safety import error_fields, exception_trace
+from ..utils.log_safety import error_fields, error_text, exception_trace, log_error
 
 logger = logging.getLogger(__name__)
 
@@ -325,11 +325,12 @@ def sync_search(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE
         )
     except Exception as e:
+        error_id = log_error(logger, "[DCI Sync Search] Unexpected error", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': str(e)
+                    'message': error_text('Internal server error', error_id)
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -418,11 +419,12 @@ def async_search(request):
         task.start()
 
     except Exception as e:
+        error_id = log_error(logger, "[DCI Async Search] Unexpected error", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': str(e)
+                    'message': error_text('Internal server error', error_id)
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

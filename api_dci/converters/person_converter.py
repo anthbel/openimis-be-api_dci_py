@@ -496,6 +496,6 @@ class PersonConverter:
         individual.user_updated = user
 
         # Save (HistoryBusinessModel handles versioning)
-        individual.save()
+        individual.save(user=user)
 
         return individual, updated_json_ext

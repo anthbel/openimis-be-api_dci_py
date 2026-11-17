@@ -314,6 +314,14 @@ caller holds the masked-data right (core `gql_query_enable_viewing_masked_data_p
 mask, a masked `dob` included as `birth_date`. `PUT registry/person/{id}/update` refuses
 (HTTP 400) a field given the string mask in place of a masked value it does not hold.
 
+## Error Responses
+
+A request that fails on an unexpected error, or on invalid data found while it is processed,
+gets a generic message with an error id (`Internal server error; error id <id>`), never the
+exception's text, which can quote stored values. The server log holds the error id with the
+exception's class and stack frames. Refusals of the request itself (serializer validation,
+record provider request errors, authentication) keep their own messages.
+
 ## Rate Limit
 
 Sync search, async search and `GET registry/person/{id}` share one request budget per

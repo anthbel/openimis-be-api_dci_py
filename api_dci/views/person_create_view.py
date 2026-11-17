@@ -21,7 +21,7 @@ from ..converters.person_converter import PersonConverter
 from ..masking import check_person_sent_back
 from ..permissions import DCIPersonCreatePermissions, DCIPersonPermissions
 from ..config import get_registry_type
-from ..utils.log_safety import error_fields, exception_trace
+from ..utils.log_safety import error_fields, error_text, log_error
 
 logger = logging.getLogger(__name__)
 
@@ -157,21 +157,21 @@ def person_create(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except ValueError as e:
-        logger.error(f"[DCI Person Create] Invalid data: {type(e).__name__}")
+        error_id = log_error(logger, "[DCI Person Create] Invalid data", e)
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
-                error_message=f"Invalid data: {str(e)}",
+                error_message=error_text("Invalid data", error_id),
                 operation="create"
             ),
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Person Create] Unexpected error: {exception_trace(e)}")
+        error_id = log_error(logger, "[DCI Person Create] Unexpected error", e)
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
-                error_message=f"Internal server error: {str(e)}",
+                error_message=error_text("Internal server error", error_id),
                 operation="create"
             ),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -347,21 +347,21 @@ def person_update(request, person_id):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except ValueError as e:
-        logger.error(f"[DCI Person Update] Invalid data: {type(e).__name__}")
+        error_id = log_error(logger, "[DCI Person Update] Invalid data", e)
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
-                error_message=f"Invalid data: {str(e)}",
+                error_message=error_text("Invalid data", error_id),
                 operation="update"
             ),
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Person Update] Unexpected error: {exception_trace(e)}")
+        error_id = log_error(logger, "[DCI Person Update] Unexpected error", e)
         return Response(
             DCIPersonResponseSerializer.create_error_response(
                 request_data=request.data,
-                error_message=f"Internal server error: {str(e)}",
+                error_message=error_text("Internal server error", error_id),
                 operation="update"
             ),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

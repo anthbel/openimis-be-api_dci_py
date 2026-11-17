@@ -3,6 +3,8 @@ DCI Person Detail ViewSet
 
 Retrieves a single Person by ID.
 """
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
@@ -13,6 +15,9 @@ from ..converters.person_converter import PersonConverter
 from ..masking import mask_person
 from ..permissions import DCIPersonPermissions
 from ..throttling import DCISearchRateThrottle
+from ..utils.log_safety import error_text, log_error
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(
@@ -121,9 +126,10 @@ def person_detail(request, person_id):
             status=status.HTTP_503_SERVICE_UNAVAILABLE
         )
     except Exception as e:
+        error_id = log_error(logger, "[DCI Person Detail] Unexpected error", e)
         return Response(
             {
-                'error': f'Internal server error: {str(e)}'
+                'error': error_text('Internal server error', error_id)
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
