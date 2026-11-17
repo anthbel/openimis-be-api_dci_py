@@ -331,13 +331,13 @@ keys `sex`, `phone` and `email`; further numbers and emails are not kept. `Perso
 creates no person without a location.
 
 Core row security shows a person without a location to every user. The management command
-`clean_dci_persons` reports the persons the DCI API wrote (`json_ext.registry_metadata`, not
-deleted) that need one of the corrections below, and makes them with `--apply --username <user>`
+`clean_dci_persons` reports the persons the DCI API wrote (`json_ext.registry_metadata`) that need
+one of the corrections below, and makes them with `--apply --username <user>`
 (the user the changes are saved as). `--apply` is refused unless that user holds the individual
 update right (`gql_individual_update_perms`, 159003), and with `--retire-unplaced` also the
 individual delete right (`gql_individual_delete_perms`, 159004):
 
-- a person without a location is placed at the one address `location_code` its `json_ext`
+- a person without a location, not soft-deleted, is placed at the one address `location_code` its `json_ext`
   names (`address`, or `spdci_data.address`), when that location is valid and one its creator may
   write; otherwise it is reported `not placed`, with the reason, and stays without a location;
 - a `json_ext.spdci_data` holding more than the registry-specific data of its registry type (a
@@ -346,7 +346,9 @@ individual delete right (`gql_individual_delete_perms`, 159004):
 - each row of the person's individual history (`individual_historicalindividual`) whose
   `json_ext.spdci_data` holds such a copy has it cut the same way, in place; the history rows are
   kept and nothing else in them changes. This also covers a person whose current row is already
-  clean;
+  clean, a soft-deleted person (whose current row is cut too, and which is reported `deleted`), and
+  the history rows the DCI API wrote (`registry_metadata` and `spdci_data`) for a person whose current
+  row no longer holds `registry_metadata`;
 - with `--retire-unplaced`, a person still without a location after the placement is soft-deleted
   through the individual service (`IndividualService.delete`, directly, not through a delete task),
   as the `--username` user. Without it, the report ends by saying how many persons stay without a

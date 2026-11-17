@@ -44,8 +44,10 @@ class Command(BaseCommand):
         "Places each person the DCI API created without a location at the one address location_code its json_ext "
         "names, when its creator may write that location, and cuts json_ext.spdci_data to the registry-specific "
         "data, moving sex, the first phone_number and email, and the address to their json_ext keys. Cuts the "
-        "spdci_data of the person's history rows the same way. With --retire-unplaced, soft-deletes the persons "
-        "it cannot place. Reports the persons it changes or cannot place by uuid; writes only with --apply."
+        "spdci_data of the person's history rows the same way. Soft-deleted persons are cut, not placed, and the "
+        "history rows holding a copy are cut whatever the person's current row holds. With --retire-unplaced, "
+        "soft-deletes the persons it cannot place. Reports the persons it changes or cannot place by uuid; writes "
+        "only with --apply."
     )
 
     def add_arguments(self, parser):
@@ -65,14 +67,23 @@ class Command(BaseCommand):
             if user is None:
                 raise CommandError("--apply needs --username naming an existing user")
             self._check_rights(user, retire)
-        persons = Individual.objects.filter(is_deleted=False, json_ext__has_key="registry_metadata") \
-            .select_related("user_created").order_by("id")
+        dci_persons = Individual.objects.filter(json_ext__has_key="registry_metadata")
         counts = {"reported": 0, "unplaced": 0, "retired": 0, "history": 0}
-        for person in persons.iterator():
+        for person in dci_persons.select_related("user_created").order_by("id").iterator():
             line = self._clean(person, user, retire, counts)
             if line:
                 counts["reported"] += 1
                 self.stdout.write(f"{person.uuid}: {line}")
+        # History rows the DCI API wrote for persons whose current row no longer names it.
+        others = Individual.history.model.objects.filter(json_ext__has_keys=["registry_metadata", "spdci_data"]) \
+            .exclude(id__in=dci_persons.values("id")).values_list("id", flat=True).distinct().order_by("id")
+        for person_id in others:
+            with transaction.atomic():
+                rows = self._purge_history(person_id, user)
+            if rows:
+                counts["reported"] += 1
+                counts["history"] += rows
+                self.stdout.write(f"{person_id}: {self._history_part(rows, user)}")
         done = "" if user else " would be"
         self.stdout.write(f"{counts['reported']} persons reported, {counts['unplaced']} not placed, "
                           f"{counts['retired']}{done} retired, {counts['history']} history rows{done} purged")
@@ -95,22 +106,29 @@ class Command(BaseCommand):
         changes."""
         with transaction.atomic():
             parts = self._place_and_cut(person, user)
-            if person.location_id is None:
+            if person.location_id is None and not person.is_deleted:
                 counts["unplaced"] += 1
                 if retire:
                     parts.append(self._retire(person, user, counts))
-            rows = self._purge_history(person, user)
+            rows = self._purge_history(person.id, user)
             if rows:
                 counts["history"] += rows
-                parts.append(f"{rows} history rows {'purged' if user else 'would be purged'}")
+                parts.append(self._history_part(rows, user))
+        if person.is_deleted and parts:
+            parts.insert(0, "deleted")
         return "; ".join(parts)
 
+    @staticmethod
+    def _history_part(rows, user):
+        return f"{rows} history rows {'purged' if user else 'would be purged'}"
+
     def _place_and_cut(self, person, user):
+        """Places a live person without a location and cuts the request copy of any person; the report parts."""
         json_ext = person.json_ext if isinstance(person.json_ext, dict) else {}
         cleaned = cleaned_json_ext(json_ext)
         placed = False
         parts = []
-        if person.location_id is None:
+        if person.location_id is None and not person.is_deleted:
             request_copy = json_ext.get("spdci_data") if isinstance(json_ext.get("spdci_data"), dict) else {}
             addresses = _addresses(json_ext.get("address"), request_copy.get("address"))
             try:
@@ -141,11 +159,12 @@ class Command(BaseCommand):
         return "retired"
 
     @staticmethod
-    def _purge_history(person, user):
-        """The number of history rows of ``person`` holding a request copy, cut when ``user`` is given."""
+    def _purge_history(person_id, user):
+        """The number of history rows of the person ``person_id`` holding a request copy, cut when ``user`` is
+        given."""
         from individual.models import Individual
 
-        history = Individual.history.model.objects.filter(id=person.id)
+        history = Individual.history.model.objects.filter(id=person_id)
         rows = 0
         for row in history.only("pk", "json_ext").iterator():
             cut = _cut_request_copy(row.json_ext)

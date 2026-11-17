@@ -183,6 +183,34 @@ class CleanDciPersonsTest(TestCase):
                          [{"farm_details": [{"crop": "maize"}]}] * 2)
         self.assertIn(f"{person.uuid}: 1 history rows purged\n", out)
 
+    def test_a_soft_deleted_person_loses_its_request_copies_and_is_neither_placed_nor_retired(self):
+        person = self.dci_person("Cleandeleted")
+        person.delete(user=self.admin)
+        rows = len(self.history(person))
+        out = self.clean("--apply", "--username", self.admin.username, "--retire-unplaced")
+        person = Individual.objects.get(id=person.id)
+        self.assertTrue(person.is_deleted)
+        self.assertIsNone(person.location_id)
+        self.assertEqual(person.json_ext["spdci_data"], {"farm_details": [{"crop": "maize"}]})
+        self.assertEqual(person.json_ext["phone"], "+25779000005")
+        history = self.history(person)
+        self.assertEqual([row[0]["spdci_data"] for row in history],
+                         [{"farm_details": [{"crop": "maize"}]}] * len(history))
+        self.assertIn(f"{person.uuid}: deleted; request copy removed; {rows} history rows purged\n", out)
+        self.assertIn("0 not placed, 0 retired", out)
+
+    def test_history_rows_are_purged_when_the_current_row_no_longer_names_the_dci_api(self):
+        person = self.dci_person("Cleanrenamed", location=self.village)
+        person.json_ext = {"note": "edited"}
+        person.save(user=self.creator)
+        out = self.apply()
+        history = self.history(person)
+        self.assertEqual(history[0][0]["spdci_data"], {"farm_details": [{"crop": "maize"}]})
+        self.assertEqual(history[0][0]["registry_metadata"], OLD_JSON_EXT["registry_metadata"])
+        self.assertEqual(history[1][0], {"note": "edited"})
+        self.assertEqual(Individual.objects.get(id=person.id).json_ext, {"note": "edited"})
+        self.assertIn(f"{person.uuid}: 1 history rows purged\n", out)
+
     def test_a_dry_run_leaves_the_history_as_it_is(self):
         person = self.dci_person("Cleanhistdry")
         before = self.history(person)
