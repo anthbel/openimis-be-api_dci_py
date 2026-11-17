@@ -332,18 +332,30 @@ creates no person without a location.
 
 Core row security shows a person without a location to every user. The management command
 `clean_dci_persons` reports the persons the DCI API wrote (`json_ext.registry_metadata`) that need
-one of two corrections, and makes them with `--apply --username <user>` (the user the changes are
-saved as):
+one of the corrections below, and makes them with `--apply --username <user>`
+(the user the changes are saved as). `--apply` is refused unless that user holds the individual
+update right (`gql_individual_update_perms`, 159003), and with `--retire-unplaced` also the
+individual delete right (`gql_individual_delete_perms`, 159004):
 
-- a person without a location is placed at the one address `location_code` its `json_ext`
+- a person without a location, not soft-deleted, is placed at the one address `location_code` its `json_ext`
   names (`address`, or `spdci_data.address`), when that location is valid and one its creator may
   write; otherwise it is reported `not placed`, with the reason, and stays without a location;
 - a `json_ext.spdci_data` holding more than the registry-specific data of its registry type (a
   copy of the request person) is cut to that data; `sex`, the first `phone_number` and `email`, and
-  `address` of the copy go to their `json_ext` keys unless the person already has them.
+  `address` of the copy go to their `json_ext` keys unless the person already has them;
+- each row of the person's individual history (`individual_historicalindividual`) whose
+  `json_ext.spdci_data` holds such a copy has it cut the same way, in place; the history rows are
+  kept and nothing else in them changes. This also covers a person whose current row is already
+  clean, a soft-deleted person (whose current row is cut too, and which is reported `deleted`), and
+  the history rows the DCI API wrote (`registry_metadata` and `spdci_data`) for a person whose current
+  row no longer holds `registry_metadata`;
+- with `--retire-unplaced`, a person still without a location after the placement is soft-deleted
+  through the individual service (`IndividualService.delete`, directly, not through a delete task),
+  as the `--username` user. Without it, the report ends by saying how many persons stay without a
+  location, visible to every user.
 
-It names persons by uuid only. Without `--apply` it changes nothing. The individual history keeps
-the earlier versions of the rows it changes.
+Each person is corrected in one transaction. It names persons by uuid only. Without `--apply` it
+changes nothing and reports what it would do.
 
 ### Masked person fields
 
