@@ -298,6 +298,15 @@ class DCIPersonAccessTest(APITestCase):
                 self.assertNotIn("NO-SUCH-CODE", response.content.decode())
         self.assertFalse(Individual.objects.filter(last_name="Throughdci").exists())
 
+    def test_the_converter_creates_no_person_without_a_location(self):
+        from api_dci.converters.person_converter import PersonConverter
+
+        person = {"name": {"given_name": "Created", "family_name": "Throughconverter"},
+                  "birth_date": "1991-02-03T00:00:00Z"}
+        with self.assertRaises(ValueError):
+            PersonConverter.create_individual_from_spdci(spdci_person=person, registry_type="fr", user=self.creator)
+        self.assertFalse(Individual.objects.filter(last_name="Throughconverter").exists())
+
     # -- persons and households without a location -----------------------------------------------------------
 
     def household(self, code, location, *members):

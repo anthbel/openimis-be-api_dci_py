@@ -56,6 +56,17 @@ class JsonExtManager:
         return base_structure
 
     @staticmethod
+    def extract_registry_data(registry_type: str, spdci_person: Dict) -> Optional[Dict]:
+        """The registry-specific data of ``spdci_person`` that ``spdci_data`` keeps for ``registry_type`` (any
+        case); None for another registry type."""
+        extract = {
+            "FR": JsonExtManager._extract_fr_data,
+            "SR": JsonExtManager._extract_sr_data,
+            "IBR": JsonExtManager._extract_ibr_data,
+        }.get(str(registry_type or "").upper())
+        return extract(spdci_person) if extract else None
+
+    @staticmethod
     def _extract_fr_data(spdci_person: Dict) -> Dict:
         """
         Extract Farmer Registry specific data.
