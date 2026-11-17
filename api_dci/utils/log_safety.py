@@ -5,6 +5,7 @@ Serializer messages and exception messages can quote the values they reject, so 
 written to a log; the field paths, error codes, exception class and stack frames are.
 """
 import traceback
+import uuid
 
 
 def error_fields(errors):
@@ -34,3 +35,16 @@ def exception_trace(exc):
     """The class of `exc` and the stack frames it went through, without its message."""
     frames = "".join(traceback.format_tb(exc.__traceback__))
     return f"{type(exc).__name__}\nTraceback (most recent call last):\n{frames}".rstrip()
+
+
+def log_error(log, context, exc):
+    """Logs `exc` under a new error id, by its class and stack frames, and returns the id. A response
+    gives the caller this id, never the exception's message, which can quote stored values."""
+    error_id = uuid.uuid4().hex
+    log.error("%s [error id %s]: %s", context, error_id, exception_trace(exc))
+    return error_id
+
+
+def error_text(kind, error_id):
+    """The message a response gives for a failure logged under `error_id`."""
+    return f"{kind}; error id {error_id}"

@@ -6,8 +6,8 @@ on:
     branches: [rsu/26.10]
   workflow_dispatch:
 
-# Runs the module's tests on the openIMIS release/26.10 assembly, restricted to the modules it
-# needs, on the openIMIS database image.
+# Runs the module's tests on the openIMIS release/26.10 assembly, with the individual module taken
+# from the anthbel fork (rsu/26.10), restricted to the modules it needs, on the openIMIS database image.
 
 jobs:
   test:
@@ -30,12 +30,17 @@ jobs:
     env:
       ASSEMBLY_REF: release/26.10
       MODULE_NAME: api_dci
-      BASE_MODULES: core individual workflow tasks_management location medical medical_pricelist calculation contribution_plan
-      EXTRA_MODULES: ""
+      BASE_MODULES: core workflow tasks_management location medical medical_pricelist calculation contribution_plan
+      EXTRA_MODULES: "individual"
     steps:
       - uses: actions/checkout@v7
         with:
           path: current-module
+      - uses: actions/checkout@v7
+        with:
+          repository: anthbel/openimis-be-individual_py
+          ref: rsu/26.10
+          path: dep-individual
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"

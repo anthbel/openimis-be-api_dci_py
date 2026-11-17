@@ -15,7 +15,7 @@ from ..serializers import (
     DCINotifyResponseSerializer,
 )
 from ..permissions import DCIPersonPermissions
-from ..utils.log_safety import error_fields, exception_trace
+from ..utils.log_safety import error_fields, error_text, log_error
 
 logger = logging.getLogger(__name__)
 
@@ -116,23 +116,23 @@ def notify(request):
         return Response(response_data, status=status.HTTP_200_OK)
 
     except KeyError as e:
-        logger.error(f"[DCI Notify] Missing required field: {e}")
+        error_id = log_error(logger, "[DCI Notify] Missing required field", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': f'Missing required field: {e}'
+                    'message': error_text('Missing required field', error_id)
                 }
             },
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
-        logger.error(f"[DCI Notify] Unexpected error: {exception_trace(e)}")
+        error_id = log_error(logger, "[DCI Notify] Unexpected error", e)
         return Response(
             {
                 'header': {
                     'status': 'error',
-                    'message': f'Internal server error: {str(e)}'
+                    'message': error_text('Internal server error', error_id)
                 }
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
